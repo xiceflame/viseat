@@ -1,0 +1,222 @@
+{
+  "_comment": "Rokid 营养助手后端 Mock 响应数据 - 供手机端开发使用",
+  "_updated": "2025-11-25",
+  
+  "health_check": {
+    "status": "healthy",
+    "timestamp": "2025-11-25T18:00:00.000000",
+    "nutrition_db_loaded": true
+  },
+  
+  "vision_analyze_success": {
+    "raw_llm": {
+      "is_food": true,
+      "foods": [
+        {
+          "dish_name": "红烧肉",
+          "cooking_method": "braise",
+          "ingredients": [
+            {"name_en": "pork belly", "weight_g": 150, "confidence": 0.9},
+            {"name_en": "sugar", "weight_g": 10, "confidence": 0.7}
+          ],
+          "total_weight_g": 160,
+          "confidence": 0.85
+        },
+        {
+          "dish_name": "米饭",
+          "cooking_method": "steam",
+          "ingredients": [
+            {"name_en": "rice", "weight_g": 200, "confidence": 0.95}
+          ],
+          "total_weight_g": 200,
+          "confidence": 0.95
+        }
+      ]
+    },
+    "snapshot": {
+      "foods": [
+        {"name": "pork belly", "weight_g": 150, "cooking_method": "braise"},
+        {"name": "sugar", "weight_g": 10, "cooking_method": "braise"},
+        {"name": "rice", "weight_g": 200, "cooking_method": "steam"}
+      ],
+      "nutrition": {
+        "calories": 780,
+        "protein": 28,
+        "carbs": 85,
+        "fat": 35
+      }
+    }
+  },
+  
+  "vision_analyze_no_food": {
+    "detail": "未检测到食物，请拍摄清晰的食物照片"
+  },
+  
+  "meal_start_success": {
+    "session_id": "sess_abc123",
+    "status": "active",
+    "initial_kcal": 780,
+    "initial_nutrition": {
+      "calories": 780,
+      "protein": 28,
+      "carbs": 85,
+      "fat": 35
+    },
+    "auto_capture_interval": 300
+  },
+  
+  "meal_update_success": {
+    "session_id": "sess_abc123",
+    "current_remaining_kcal": 400,
+    "total_served_kcal": 780,
+    "consumed_kcal": 380,
+    "consumption_ratio": 0.487,
+    "duration_minutes": 10.5,
+    "suggestion": "进食节奏良好，继续保持",
+    "consumed_protein": 14,
+    "consumed_carbs": 42,
+    "consumed_fat": 17,
+    "current_status": {
+      "remaining_calories": 400,
+      "consumed_total": 380,
+      "consumption_ratio": 0.487,
+      "duration_minutes": 10.5
+    },
+    "since_last_update": {
+      "net_calories_change": 380,
+      "time_elapsed_minutes": 5
+    },
+    "snapshots_count": 2
+  },
+  
+  "meal_end_success": {
+    "session_id": "sess_abc123",
+    "status": "ended",
+    "total_consumed_kcal": 620,
+    "consumption_ratio": 0.795,
+    "duration_minutes": 25,
+    "report": "✅ 用餐适量，摄入量合理 | ✅ 用餐时长适中 | ✅ 进食速度健康",
+    "total_protein": 22,
+    "total_carbs": 68,
+    "total_fat": 28,
+    "nutrition_breakdown": {
+      "protein_g": 22,
+      "carbs_g": 68,
+      "fat_g": 28,
+      "protein_percent": 18.6,
+      "carbs_percent": 57.6,
+      "fat_percent": 23.7
+    },
+    "final_stats": {
+      "total_served": 780,
+      "total_consumed": 620,
+      "consumption_ratio": 0.795,
+      "duration_minutes": 25,
+      "average_eating_speed": 24.8,
+      "waste_ratio": 0.205,
+      "snapshots_count": 3,
+      "total_protein": 22,
+      "total_carbs": 68,
+      "total_fat": 28
+    },
+    "message": "用餐记录已完成"
+  },
+  
+  "stats_daily_success": {
+    "date": "2025-11-25",
+    "user_id": "default_user",
+    "total_calories": 1850,
+    "total_protein": 75.5,
+    "total_carbs": 220.3,
+    "total_fat": 65.2,
+    "target_calories": 2000,
+    "calories_ratio": 92.5,
+    "meals": [
+      {
+        "session_id": "sess_breakfast",
+        "meal_type": "breakfast",
+        "calories": 450,
+        "protein": 18,
+        "carbs": 60,
+        "fat": 15,
+        "time": "08:30",
+        "status": "completed"
+      },
+      {
+        "session_id": "sess_lunch",
+        "meal_type": "lunch",
+        "calories": 780,
+        "protein": 32,
+        "carbs": 95,
+        "fat": 28,
+        "time": "12:15",
+        "status": "completed"
+      },
+      {
+        "session_id": "sess_dinner",
+        "meal_type": "dinner",
+        "calories": 620,
+        "protein": 25.5,
+        "carbs": 65.3,
+        "fat": 22.2,
+        "time": "18:45",
+        "status": "completed"
+      }
+    ],
+    "meals_count": 3,
+    "nutrition_breakdown": {
+      "protein_percent": 20.9,
+      "carbs_percent": 61.0,
+      "fat_percent": 18.1
+    }
+  },
+  
+  "chat_nutrition_success": {
+    "answer": "您有轻度脂肪肝，本餐红烧肉热量较高（约35g脂肪），建议下一餐以清淡蔬菜为主，减少油腻食物的摄入。米饭的碳水含量适中，总体热量780大卡在合理范围内。",
+    "suggested_actions": ["添加蔬菜", "选择低脂食物"],
+    "meal_advice": "建议减少油脂摄入"
+  },
+  
+  "chat_nutrition_meal_start": {
+    "answer": "您好！看到您今天准备吃红烧肉和米饭。考虑到您有轻度脂肪肝，建议这顿饭以蔬菜为主，红烧肉适量品尝即可，细嚼慢咽有助消化。",
+    "suggested_actions": ["添加蔬菜"],
+    "meal_advice": "建议低油且蔬菜为主"
+  },
+  
+  "nutrition_aggregate_success": {
+    "foods": [
+      {
+        "name": "rice",
+        "weight_g": 200,
+        "barcode": null,
+        "calories_per_100g": 130,
+        "protein_per_100g": 2.7,
+        "carbs_per_100g": 28,
+        "fat_per_100g": 0.3,
+        "calories": 260,
+        "protein": 5.4,
+        "carbs": 56,
+        "fat": 0.6
+      },
+      {
+        "name": "pork",
+        "weight_g": 150,
+        "barcode": null,
+        "calories_per_100g": 242,
+        "protein_per_100g": 27,
+        "carbs_per_100g": 0,
+        "fat_per_100g": 14,
+        "calories": 363,
+        "protein": 40.5,
+        "carbs": 0,
+        "fat": 21
+      }
+    ],
+    "total": {
+      "calories": 623,
+      "protein": 45.9,
+      "carbs": 56,
+      "fat": 21.6
+    }
+  }
+}
