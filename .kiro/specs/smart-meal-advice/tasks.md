@@ -1,0 +1,106 @@
+# Implementation Plan
+
+## 前端实现任务
+
+- [x] 1. 创建数据模型和上下文收集器
+  - [x] 1.1 创建 MealContext 和 DailyContext 数据类
+    - 在 `network/model/` 目录下创建 `ContextModels.kt`
+    - 定义 MealContext, DailyContext, MealSummaryResponse, MealAdviceResponse, NextMealSuggestion 数据类
+    - 添加 JSON 序列化注解（@SerializedName）
+    - _Requirements: 5.1, 5.2, 6.2_
+  - [ ]* 1.2 Write property test for duration classification
+    - **Property 4: Duration Classification**
+    - **Validates: Requirements 5.4, 5.5, 5.6**
+  - [x] 1.3 创建 DailyNutritionTracker 类
+    - 在 `repository/` 目录下创建 `DailyNutritionTracker.kt`
+    - 实现 SharedPreferences 存储（使用 "daily_nutrition" 作为 prefs name）
+    - 实现 `updateDailyTotals(mealNutrition: NutritionTotal)` 方法
+    - 实现 `getDailyContext(): DailyContext` 方法
+    - 实现 `isNewDay()` 和 `resetDailyTotals()` 日期切换重置逻辑
+    - _Requirements: 6.1, 6.2, 6.4_
+  - [ ]* 1.4 Write property test for daily totals calculation
+    - **Property 6: Daily Totals Calculation**
+    - **Validates: Requirements 6.2**
+
+- [x] 2. 扩展 HomeViewModel 用餐上下文收集
+  - [x] 2.1 添加用餐上下文收集方法
+    - 在 HomeViewModel 中添加 `collectMealContext(): MealContext` 方法
+    - 实现 `classifyEatingSpeed(durationMinutes: Double): String` 方法
+      - duration < 10 → "fast"
+      - 15 ≤ duration ≤ 30 → "normal"
+      - duration > 45 → "slow"
+      - else → "normal"
+    - 确保 sessionStartTime 在 startMealSessionManually() 和 startMealSessionInternal() 中正确记录
+    - _Requirements: 5.1, 5.2, 5.3_
+  - [ ]* 2.2 Write property test for duration calculation
+    - **Property 5: Duration Calculation**
+    - **Validates: Requirements 5.2**
+  - [x] 2.3 集成 DailyNutritionTracker
+    - 在 HomeViewModel 构造函数中注入 DailyNutritionTracker
+    - 在用餐结束时调用 `dailyNutritionTracker.updateDailyTotals()`
+    - 在发送结束请求前调用 `dailyNutritionTracker.getDailyContext()`
+    - _Requirements: 6.1, 6.3_
+
+- [x] 3. 扩展 BluetoothManager 用餐总结发送
+  - [x] 3.1 添加 sendMealSummary 方法
+    - 在 BluetoothManager 中添加 `sendMealSummary(summary: MealSummaryResponse): Boolean` 方法
+    - 定义 Caps 数据结构：
+      - [0] Float: 总热量 (kcal)
+      - [1] Float: 蛋白质 (g)
+      - [2] Float: 碳水化合物 (g)
+      - [3] Float: 脂肪 (g)
+      - [4] Float: 用餐时长 (分钟)
+      - [5] String: 评级 ("good" | "fair" | "poor")
+      - [6] String: 简短建议 (≤20字符，使用 .take(20))
+    - 在 Config.MsgName 中添加 `MEAL_SUMMARY = "meal_summary"` 常量
+    - 处理眼镜断开连接的情况（检查 isConnected()，返回 false 并记录日志）
+    - _Requirements: 4.1, 4.2, 4.3, 4.5_
+  - [ ]* 3.2 Write property test for glasses summary structure
+    - **Property 3: Glasses Summary Structure**
+    - **Validates: Requirements 4.2, 4.3**
+
+- [x] 4. 扩展 NetworkManager 和 API 请求
+  - [x] 4.1 更新 ApiService 接口
+    - 修改 `endMealSession` 方法，使用 @Body 接收完整请求体
+    - 创建 `MealEndRequest` 数据类，包含：
+      - session_id: String
+      - meal_context: MealContextPayload?
+      - daily_context: DailyContextPayload?
+      - user_profile: UserProfilePayload?
+    - _Requirements: 5.3, 6.3_
+  - [x] 4.2 更新 ApiResponses 响应模型
+    - 更新 MealEndResponse，添加完整字段：
+      - meal_summary: MealSummaryResponse? (含 total_calories, total_protein, total_carbs, total_fat, duration_minutes, rating, short_advice)
+      - advice: MealAdviceResponse? (含 summary, suggestions, highlights, warnings)
+      - next_meal_suggestion: NextMealSuggestion? (含 recommended_time, meal_type, calorie_budget, focus_nutrients, avoid)
+    - _Requirements: 3.1, 3.2_
+  - [ ]* 4.3 Write property test for response structure
+    - **Property 2: Meal End Response Structure**
+    - **Validates: Requirements 3.1, 3.2**
+  - [x] 4.4 更新 NetworkManager.endMeal 方法
+    - 修改方法签名：`endMeal(sessionId: String, mealContext: MealContext?, dailyContext: DailyContext?, userProfile: UserProfilePayload?): Result<MealEndResponse>`
+    - 构建 MealEndRequest 请求体
+    - 调用更新后的 ApiService.endMealSession
+    - _Requirements: 5.3, 6.3_
+
+- [x] 5. 更新 endMealSessionManually 流程
+  - [x] 5.1 修改 endMealSessionManually 方法
+    - 收集 MealContext：调用 `collectMealContext()` 计算用餐时长和进食速度
+    - 收集 DailyContext：调用 `dailyNutritionTracker.getDailyContext()` 获取今日摄入
+    - 获取 UserProfile：从 userProfileRepository 获取
+    - 调用更新后的 `networkManager.endMeal(sessionId, mealContext, dailyContext, userProfile)`
+    - _Requirements: 5.3, 6.3_
+  - [x] 5.2 处理 API 响应并发送眼镜总结
+    - 解析响应中的 meal_summary 字段
+    - 如果 meal_summary 不为空，调用 `bluetoothManager.sendMealSummary(mealSummary)`
+    - 处理眼镜断开连接的情况（sendMealSummary 返回 false 时仅记录日志）
+    - 更新手机端 UI：显示 advice.summary 在 statusMessage 中
+    - _Requirements: 4.1, 4.5_
+  - [x] 5.3 更新今日摄入统计
+    - 从响应的 final_stats 中获取本餐营养数据
+    - 调用 `dailyNutritionTracker.updateDailyTotals(mealNutrition)`
+    - 确保数据持久化到 SharedPreferences
+    - _Requirements: 6.1_
+
+- [x] 6. Checkpoint - 确保所有测试通过
+  - Ensure all tests pass, ask the user if questions arise.

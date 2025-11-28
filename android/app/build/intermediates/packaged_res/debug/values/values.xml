@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#000000</color>
+    <color name="primary">#2196F3</color>
+    <color name="secondary">#03DAC5</color>
+    <color name="white">#FFFFFF</color>
+    <string name="app_name">Rokid营养助手</string>
+    <string name="chat">AI对话</string>
+    <string name="end_meal">结束用餐</string>
+    <string name="history">历史记录</string>
+    <string name="start_meal">开始用餐</string>
+    <string name="statistics">统计趋势</string>
+    <string name="take_photo">拍照识别</string>
+    <style name="Theme.RokidNutrition" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorSecondary">@color/secondary</item>
+        <item name="android:statusBarColor">@color/primary</item>
+    </style>
+</resources>

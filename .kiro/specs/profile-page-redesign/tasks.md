@@ -1,0 +1,132 @@
+# Implementation Plan
+
+## Profile Page Redesign - 我的页面重新设计
+
+- [x] 1. 扩展 UserProfile 数据模型
+  - [x] 1.1 添加 nickname 字段到 UserProfile
+    - 在 UserProfileRepository.kt 的 UserProfile 数据类中添加 nickname: String? 字段
+    - 更新 UserProfileEntity 添加 nickname 列
+    - 更新 toUserProfile() 转换方法
+    - _Requirements: 1.2, 1.6_
+  - [x] 1.2 创建 BMIStatus 枚举和工具函数
+    - 在 ProfileScreen.kt 中创建 BMIStatus 枚举（UNDERWEIGHT, NORMAL, OVERWEIGHT, OBESE）
+    - 每个状态包含 label, color, suggestion
+    - 创建 getBMIStatus(bmi: Float) 函数
+    - _Requirements: 1.3_
+  - [x] 1.3 创建 getProgressColor 函数
+    - 实现热量进度颜色计算：绿色(<80%)、橙色(80-100%)、红色(>100%)
+    - _Requirements: 2.3, 2.4_
+  - [ ]* 1.4 编写 BMI 状态映射属性测试
+    - **Property 1: BMI Status Color Mapping**
+    - **Validates: Requirements 1.3**
+  - [ ]* 1.5 编写进度颜色阈值属性测试
+    - **Property 2: Progress Color Threshold**
+    - **Validates: Requirements 2.3, 2.4**
+
+- [x] 2. 实现 UserHeaderCard 组件
+  - [x] 2.1 创建 UserHeaderCard Composable
+    - 实现渐变背景卡片（primaryContainer → primary）
+    - 显示性别头像（72dp 圆形）
+    - 显示昵称（如有）或默认显示"用户"
+    - 显示基本信息：性别·年龄·身高·体重
+    - 点击触发编辑回调
+    - _Requirements: 1.1, 1.2, 1.4, 1.6_
+  - [x] 2.2 实现 BMI 指示器组件
+    - 大字号显示 BMI 数值
+    - 根据 BMIStatus 显示颜色条和状态文字
+    - _Requirements: 1.3_
+  - [x] 2.3 实现健康目标徽章
+    - 右上角显示健康目标（减重/增肌/维持）
+    - 显示目标体重和当前体重差值
+    - _Requirements: 5.1, 5.2, 5.3_
+  - [x] 2.4 实现空状态 UI
+    - profile 为 null 时显示"点击设置个人信息"提示
+    - _Requirements: 1.5_
+  - [ ]* 2.5 编写档案数据显示完整性属性测试
+    - **Property 3: Profile Data Display Completeness**
+    - **Validates: Requirements 1.2**
+
+- [x] 3. 实现 NutritionProgressCard 组件
+  - [x] 3.1 创建圆形进度条组件
+    - 使用 Canvas 绘制 120dp 直径圆形进度条
+    - 12dp 线宽，背景灰色，进度色根据百分比变化
+    - 中心显示当前热量/目标热量文本
+    - 复用 DailyNutritionTracker 获取今日数据
+    - 复用 UserProfile.calculateDailyCalories() 获取目标热量
+    - _Requirements: 2.1, 2.2_
+  - [x] 3.2 实现进度颜色逻辑
+    - 集成 getProgressColor 函数
+    - 动态更新进度条颜色
+    - _Requirements: 2.3, 2.4_
+  - [x] 3.3 添加用餐次数徽章
+    - 右侧显示"今日用餐 X 次"
+    - 复用 DailyNutritionTracker.getTodayMealCount()
+    - 使用餐具图标
+    - _Requirements: 2.5_
+  - [x] 3.4 实现点击导航
+    - 点击卡片触发导航到统计页回调
+    - _Requirements: 2.6_
+  - [ ]* 3.5 编写营养进度计算属性测试
+    - **Property 4: Nutrition Progress Calculation**
+    - **Validates: Requirements 2.1, 2.2**
+
+- [x] 4. 实现 HealthProfileCard 组件
+  - [x] 4.1 创建健康状况区域
+    - 使用 FlowRow 展示健康状况 Chips
+    - 粉色系配色 (#E91E63)
+    - 空列表显示"暂无"
+    - 复用现有 healthConditionOptions 列表
+    - _Requirements: 3.1, 3.3_
+  - [x] 4.2 创建饮食偏好区域
+    - 使用 FlowRow 展示饮食偏好 Chips
+    - 绿色系配色 (#4CAF50)
+    - 空列表显示"暂无"
+    - 复用现有 dietaryPreferenceOptions 列表
+    - _Requirements: 3.2, 3.4_
+  - [x] 4.3 实现编辑入口
+    - 点击卡片打开编辑弹窗
+    - _Requirements: 3.5_
+  - [ ]* 4.4 编写健康 Chips 渲染属性测试
+    - **Property 5: Health Chips Rendering**
+    - **Validates: Requirements 3.1, 3.2**
+
+- [x] 5. 实现 SettingsSection 组件
+  - [x] 5.1 创建设置列表 UI
+    - 统一的列表项样式：图标 + 标题 + 箭头
+    - 分隔线
+    - _Requirements: 4.1_
+  - [x] 5.2 实现调试日志入口
+    - 点击导航到调试日志页
+    - _Requirements: 4.2_
+  - [x] 5.3 实现关于应用展开
+    - 点击展开显示应用名称、版本、描述
+    - 使用 AnimatedVisibility 动画
+    - _Requirements: 4.3_
+  - [x] 5.4 实现清除数据功能
+    - 点击显示确认弹窗
+    - 确认后清除本地数据并显示 Toast
+    - 调用 DailyNutritionTracker.clearAll() 和相关清除方法
+    - _Requirements: 4.4, 4.5_
+
+- [x] 6. 整合 ProfileScreen 并更新编辑弹窗
+  - [x] 6.1 重构 ProfileScreen 主组件
+    - 整合所有子组件
+    - 使用 Column + verticalScroll 布局
+    - 统一间距和边距
+    - _Requirements: 1.1, 2.1, 3.1, 4.1_
+  - [x] 6.2 更新 EditProfileDialog 添加昵称输入
+    - 在编辑弹窗顶部添加昵称输入框
+    - 昵称为可选字段
+    - _Requirements: 1.6_
+  - [x] 6.3 连接数据源
+    - 从 DailyNutritionTracker 获取今日营养数据
+    - 从 UserProfile.calculateDailyCalories() 获取目标热量
+    - _Requirements: 2.1, 2.2, 2.5_
+  - [x] 6.4 更新 Navigation 传递参数
+    - 添加 onNavigateToStats 回调
+    - 添加 dailyCalories 和 mealCount 参数
+    - _Requirements: 2.6_
+
+- [x] 7. Checkpoint - 确保所有测试通过
+  - Ensure all tests pass, ask the user if questions arise.
+

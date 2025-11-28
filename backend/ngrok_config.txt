@@ -1,0 +1,76 @@
+# Ngrok配置信息
+# 更新时间: 2025-11-09
+
+## 公网URL（重要！）
+https://neighborly-inez-uninquisitive.ngrok-free.dev
+
+## 使用说明
+
+### 1. 眼镜端配置
+在眼镜端Android应用中，将API基础URL设置为：
+```
+https://neighborly-inez-uninquisitive.ngrok-free.dev
+```
+
+### 2. 手机端配置
+在手机端Android应用中，同样使用这个URL
+
+### 3. 测试命令
+```bash
+# 健康检查
+curl https://neighborly-inez-uninquisitive.ngrok-free.dev/health
+
+# 测试Qwen API
+curl -X POST https://neighborly-inez-uninquisitive.ngrok-free.dev/api/v1/test
+
+# 测试图片分析
+curl -X POST https://neighborly-inez-uninquisitive.ngrok-free.dev/api/v1/analyze \
+  -F "image=@your_food.jpg"
+```
+
+### 4. Web界面
+ngrok提供了一个本地Web界面，可以查看所有请求：
+http://127.0.0.1:4040
+
+在这里你可以：
+- 查看所有HTTP请求
+- 查看请求和响应的详细内容
+- 重放请求
+- 查看连接统计
+
+### 5. 注意事项
+⚠️ 免费版ngrok的限制：
+- 会话有时间限制（需要定期重启）
+- URL会在每次重启后改变
+- 有请求速率限制
+
+⚠️ 如果ngrok重启，需要：
+1. 重新运行：ngrok http 8000
+2. 获取新的URL
+3. 更新眼镜端和手机端的配置
+
+### 6. 保持ngrok运行
+ngrok需要一直运行才能保持公网访问。
+建议在开发时：
+- 终端1：运行FastAPI服务（./start.sh）
+- 终端2：运行ngrok（ngrok http 8000）
+
+### 7. 生产环境建议
+如果需要稳定的公网访问，考虑：
+- 升级ngrok付费版（固定域名）
+- 使用阿里云ECS服务器
+- 使用Cloudflare Tunnel（免费）
+- 使用frp自建内网穿透
+
+---
+
+## 当前状态
+✅ ngrok已启动
+✅ 公网URL可访问
+✅ 健康检查通过
+✅ API配置正常
+
+## 下一步
+1. 在眼镜端应用中配置这个URL
+2. 在手机端应用中配置这个URL
+3. 开始开发和测试！

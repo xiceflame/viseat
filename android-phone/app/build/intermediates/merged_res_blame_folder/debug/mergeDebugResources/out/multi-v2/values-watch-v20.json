@@ -1,0 +1,20 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.rokid.nutrition.phone.app-mergeDebugResources-71:/values-watch-v20/values-watch-v20.xml",
+            "map": [
+                {
+                    "source": "/Users/linjunjie/.gradle/caches/8.13/transforms/3ac4e68785f4f2375ed09f771cce8f48/transformed/appcompat-1.6.1/res/values-watch-v20/values-watch-v20.xml",
+                    "from": {
+                        "startLines": "2,5,8",
+                        "startColumns": "4,4,4",
+                        "startOffsets": "55,214,385",
+                        "endLines": "4,7,10",
+                        "endColumns": "12,12,12",
+                        "endOffsets": "209,380,553"
+                    }
+                }
+            ]
+        }
+    ]
+}
