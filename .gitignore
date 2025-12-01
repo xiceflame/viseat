@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual environments
+venv/
+backend/venv/
+
+# Backend data & uploads
+backend/data/
+backend/uploads/
+backend/viseat.db
+
+# IDE / OS
+.DS_Store
+._*
+.vscode/
+.idea/
+
+# Data & artifacts
+*.db
+*.sqlite3
+*.zip
+data/

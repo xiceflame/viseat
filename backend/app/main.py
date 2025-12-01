@@ -18,6 +18,7 @@ from pydantic import BaseModel
 
 # 导入营养数据库模块
 from .nutrition_db import get_nutrition_db, lookup_nutrition as db_lookup_nutrition, NutritionDatabase
+from .food_mapper import get_food_mapper
 
 # 加载环境变量
 load_dotenv()
@@ -57,7 +58,7 @@ OPEN_FOOD_FACTS_BASE_URL = os.getenv("OPEN_FOOD_FACTS_BASE_URL", "https://world.
 
 QWEN_API_KEY = os.getenv("QWEN_API_KEY") or os.getenv("DASHSCOPE_API_KEY")
 QWEN_BASE_URL = os.getenv("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
-QWEN_VL_MODEL = os.getenv("QWEN_VL_MODEL", "qwen3-vl-plus")
+QWEN_VL_MODEL = os.getenv("QWEN_VL_MODEL", "qwen-vl-plus")  # plus 比 max 快 3 倍
 QWEN_TEXT_MODEL = os.getenv("QWEN_TEXT_MODEL", "qwen-plus")
 
 _qwen_client: Optional[OpenAI] = None
@@ -420,9 +421,10 @@ class BaselineFood(BaseModel):
 
 
 class VisionAnalyzeRequest(BaseModel):
-    """视觉分析请求：接收图片 URL，调用 Qwen-VL 做多食材拆解。"""
+    """视觉分析请求：接收图片 URL 或 Base64，调用 Qwen-VL 做多食材拆解。"""
 
-    image_url: str
+    image_url: Optional[str] = None  # 图片 URL
+    image_base64: Optional[str] = None  # 图片 Base64 编码
     question: Optional[str] = None
     locale: str = "zh"
     # 基线模式参数（用于会话中的 Update）
@@ -864,12 +866,56 @@ async def aggregate_nutrition(payload: SnapshotPayload):
         raise HTTPException(status_code=500, detail="营养聚合计算失败")
 
 
-def calculate_nutrition(foods: list) -> dict:
+def ask_vlm_for_nutrition(name: str, weight_g: float) -> dict:
+    """
+    让 VLM 估算单个食材的营养成分（当数据库查不到时使用）
+    
+    Args:
+        name: 食材名称
+        weight_g: 重量（克）
+        
+    Returns:
+        营养成分字典 {"calories": x, "protein": x, "carbs": x, "fat": x}
+    """
+    try:
+        client = get_qwen_client()
+        prompt = f"""作为营养师，估算 {weight_g}g {name} 的营养成分。
+只返回 JSON：{{"calories": 数值, "protein": 数值, "carbs": 数值, "fat": 数值}}
+参考：鸡胸肉165kcal/100g，米饭130kcal/100g，豆腐76kcal/100g，虾85kcal/100g"""
+        
+        resp = client.chat.completions.create(
+            model=QWEN_TEXT_MODEL,  # 用文本模型更快
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            max_tokens=100,
+        )
+        
+        import re
+        text = resp.choices[0].message.content
+        # 提取 JSON
+        match = re.search(r'\{[^}]+\}', text)
+        if match:
+            data = json.loads(match.group())
+            return {
+                "calories": float(data.get("calories", 0)),
+                "protein": float(data.get("protein", 0)),
+                "carbs": float(data.get("carbs", 0)),
+                "fat": float(data.get("fat", 0)),
+            }
+    except Exception as e:
+        logger.warning(f"VLM 营养估算失败 ({name}): {e}")
+    
+    # 失败时返回默认值
+    return {"calories": weight_g, "protein": weight_g * 0.05, "carbs": weight_g * 0.15, "fat": weight_g * 0.03}
+
+
+def calculate_nutrition(foods: list, use_vlm_fallback: bool = True) -> dict:
     """
     计算食物的总营养成分
     
     Args:
         foods: 食物列表，每个食物包含name和weight
+        use_vlm_fallback: 数据库查不到时是否用 VLM 估算
         
     Returns:
         总营养成分字典
@@ -910,10 +956,23 @@ def calculate_nutrition(foods: list) -> dict:
             continue
 
         # 使用多数据源营养数据库查询（支持分类兜底）
-        # 优先级: 精确匹配 > 别名匹配 > 模糊匹配 > 分类默认值 > 通用默认值
+        # 优先级: 精确匹配 > 别名匹配 > 模糊匹配 > VLM估算 > 分类默认值
         category = food.get("category")  # 获取分类用于兜底
         nutrition_db = get_nutrition_db()
         nutrition_result, is_exact = nutrition_db.lookup(name, category=category)
+        
+        # 判断是否需要 VLM 兜底
+        is_fallback = nutrition_result.source.value in ("fallback", "category_default")
+        
+        if is_fallback and use_vlm_fallback and weight > 0:
+            # 数据库查不到，用 VLM 估算
+            logger.info(f"食材 '{name}' 未在数据库中找到，使用 VLM 估算")
+            vlm_data = ask_vlm_for_nutrition(name, weight)
+            total['calories'] += round(vlm_data['calories'], 1)
+            total['protein'] += round(vlm_data['protein'], 1)
+            total['carbs'] += round(vlm_data['carbs'], 1)
+            total['fat'] += round(vlm_data['fat'], 1)
+            continue
         
         # 转换为简单字典格式
         data = {
@@ -922,26 +981,6 @@ def calculate_nutrition(foods: list) -> dict:
             "carbs": nutrition_result.carbohydrate,
             "fat": nutrition_result.fat,
         }
-        
-        # 注意：不再使用零食热量修正逻辑
-        # 原因：该逻辑假设"snack 分类且低热量=加工零食"，但会误伤水果等天然食物
-        # 依赖 VLM 正确返回 category (meal/snack/beverage/dessert/fruit)
-        # 以及营养数据库中的真实数据
-        
-        # 如果是 fallback 且无分类，尝试旧的查询方式
-        if nutrition_result.source.value == "fallback" and not category:
-            key = normalize_food_key(name)
-            if key in NUTRITION_DB_EXT:
-                data = NUTRITION_DB_EXT[key]
-            elif key in SYNONYMS:
-                mapped = SYNONYMS[key]
-                mapped_key = normalize_food_key(mapped)
-                if mapped_key in NUTRITION_DB_EXT:
-                    data = NUTRITION_DB_EXT[mapped_key]
-                elif mapped in NUTRITION_DB:
-                    data = NUTRITION_DB[mapped]
-            elif name in NUTRITION_DB:
-                data = NUTRITION_DB[name]
         
         weight_ratio = weight / 100
         factor = get_cooking_factor(food.get("cooking_method"))
@@ -1043,6 +1082,39 @@ async def vision_analyze(req: VisionAnalyzeRequest):
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+    # 处理图片输入：支持 URL 或 Base64
+    if req.image_base64:
+        image_url = f"data:image/jpeg;base64,{req.image_base64}"
+    elif req.image_url:
+        # 检查是否是本地服务器的 URL（Qwen-VL 无法访问）
+        if "viseat.cn" in req.image_url or "localhost" in req.image_url or "127.0.0.1" in req.image_url:
+            # 从本地文件系统读取图片并转 Base64
+            try:
+                # 提取文件路径：/uploads/xxx.jpg -> /opt/RokidAI/backend/uploads/xxx.jpg
+                import re
+                match = re.search(r'/uploads/([^/]+\.(jpg|jpeg|png|gif|webp))', req.image_url, re.IGNORECASE)
+                if match:
+                    filename = match.group(1)
+                    local_path = Path(__file__).parent.parent / "uploads" / filename
+                    if local_path.exists():
+                        import base64
+                        with open(local_path, "rb") as f:
+                            img_b64 = base64.b64encode(f.read()).decode()
+                        image_url = f"data:image/jpeg;base64,{img_b64}"
+                        logger.info(f"本地图片转 Base64: {filename}")
+                    else:
+                        logger.warning(f"本地图片不存在: {local_path}")
+                        image_url = req.image_url
+                else:
+                    image_url = req.image_url
+            except Exception as e:
+                logger.warning(f"读取本地图片失败: {e}")
+                image_url = req.image_url
+        else:
+            image_url = req.image_url
+    else:
+        raise HTTPException(status_code=400, detail="必须提供 image_url 或 image_base64")
+
     # 根据模式选择不同的 prompt 和调用方式
     is_update_mode = req.mode == "update"
     use_dual_image = is_update_mode and req.reference_image_url
@@ -1079,7 +1151,7 @@ async def vision_analyze(req: VisionAnalyzeRequest):
             {"role": "system", "content": [{"type": "text", "text": system_prompt}]},
             {"role": "user", "content": [
                 {"type": "image_url", "image_url": {"url": req.reference_image_url}},
-                {"type": "image_url", "image_url": {"url": req.image_url}},
+                {"type": "image_url", "image_url": {"url": image_url}},
                 {"type": "text", "text": user_instruction},
             ]},
         ]
@@ -1123,50 +1195,36 @@ async def vision_analyze(req: VisionAnalyzeRequest):
         messages = [
             {"role": "system", "content": [{"type": "text", "text": system_prompt}]},
             {"role": "user", "content": [
-                {"type": "image_url", "image_url": {"url": req.image_url}},
+                {"type": "image_url", "image_url": {"url": image_url}},
                 {"type": "text", "text": user_instruction},
             ]},
         ]
         
     else:
         # === 标准单图识别模式（Start）===
+        # 完整格式 + 标准食材名约束，确保数据库匹配准确
         system_prompt = (
-            "你是一名专业的营养分析助手。请根据用户提供的图片，识别图中的食物，"
-            "并将结果严格按照下列 JSON 结构返回，不要输出任何额外的说明文字：\n"
-            "{\n"
-            "  \"is_food\": true,\n"
-            "  \"suggestion\": \"一句简短的餐饮建议\",\n"
-            "  \"foods\": [\n"
-            "    {\n"
-            "      \"dish_name\": \"English dish name\",\n"
-            "      \"dish_name_cn\": \"中文菜名\",\n"
-            "      \"category\": \"meal/snack/beverage/dessert/fruit\",\n"
-            "      \"cooking_method\": \"raw/steam/boil/braise/stir-fry/deep-fry/bake/grill\",\n"
-            "      \"barcode\": null,\n"
-            "      \"ingredients\": [\n"
-            "        {\"name_en\": \"ingredient\", \"name_cn\": \"食材\", \"weight_g\": 100.0, \"confidence\": 0.9}\n"
-            "      ],\n"
-            "      \"total_weight_g\": 200.0,\n"
-            "      \"confidence\": 0.9\n"
-            "    }\n"
-            "  ]\n"
-            "}\n\n"
-            "**核心要求**：\n"
-            "1. 必须输出严格合法的 JSON，不要有任何额外文字。\n"
-            "2. dish_name 用英文，dish_name_cn 用中文。\n"
-            "3. ingredients 中 name_en 必须使用精确的英文食材名：\n"
-            "   - 油炸零食用: fried corn chips, fried peanuts, potato chips\n"
-            "   - 坚果用: roasted peanuts, cashew nuts, almonds\n"
-            "   - 肉干用: beef jerky, pork jerky\n"
-            "   - 饼干用: cookies, crackers, biscuits\n"
-            "4. weight_g 估算要求：\n"
-            "   - 参考包装大小，小袋零食约50-80g，中袋100-150g，大袋200-300g\n"
-            "   - 餐盘食物参考餐盘、碗、筷子估算\n"
-            "5. cooking_method：零食通常是 deep-fry（油炸）或 bake（烘焙），不要用 raw。\n"
-            "6. category 分类：meal=正餐/主食, snack=零食小吃, beverage=饮品, dessert=甜点, fruit=水果。\n"
-            "7. 只有图片中完全没有食物时才设 is_food 为 false，包装食品、零食、饮料都是食物。\n"
-            "8. 如能看到条码数字或包装上的重量标识，填入 barcode 字段。\n"
-            "9. suggestion 字段请根据识别到的食物给出一句简短的餐饮建议（20字以内），例如'搭配蔬菜更健康'、'蛋白质充足'、'注意控制油脂摄入'等。\n"
+            "你是一名专业的营养分析助手。请仔细观察图片，精确识别图中的食物，返回JSON：\n"
+            "{\"is_food\":true,\"suggestion\":\"建议\",\"foods\":[{"
+            "\"dish_name\":\"食材名\",\"dish_name_cn\":\"食材名\",\"category\":\"meal\",\"cooking_method\":\"raw\","
+            "\"ingredients\":[{\"name_en\":\"食材名\",\"name_cn\":\"食材名\",\"weight_g\":100,\"confidence\":0.9}],"
+            "\"total_weight_g\":100,\"confidence\":0.9}]}\n\n"
+            "要求：\n"
+            "1. 只输出JSON\n"
+            "2. 每种食物或菜品单独一个foods元素，不要合并！如：饼干和糖果要分成2个foods\n"
+            "3. dish_name和ingredients.name_en/name_cn使用相同的中文标准名：\n"
+            "   主食: 米饭、面条、馒头、饺子、包子、炒饭、粥、面包\n"
+            "   肉类: 猪肉、牛肉、鸡肉、羊肉、鸭肉、排骨、五花肉、鸡腿、鸡翅、香肠、肉丸、火腿、培根\n"
+            "   海鲜: 鱼、虾、蟹、蛤蜊、鱿鱼、生蚝、扇贝、鱼丸、龙虾\n"
+            "   蔬菜: 白菜、菠菜、生菜、胡萝卜、土豆、番茄、黄瓜、西兰花、香菇、玉米、豆芽、茄子、芹菜、洋葱、辣椒、南瓜、莲藕、海带、金针菇、木耳\n"
+            "   豆制品: 豆腐、豆腐干、豆腐皮、豆浆、腐竹\n"
+            "   蛋奶: 鸡蛋、牛奶、奶酪、酸奶、黄油\n"
+            "   水果: 苹果、香蕉、橙子、葡萄、西瓜、草莓、芒果、桃子、梨\n"
+            "   零食: 饼干、薯片、巧克力、糖果、蛋糕、冰淇淋、面包、坚果\n"
+            "   快餐: 炒饭、炒面、汉堡、炸鸡、薯条、披萨、寿司、拉面、火锅、麻辣烫\n"
+            "4. category: meal/snack/beverage/dessert/fruit\n"
+            "5. cooking_method: raw/steam/boil/braise/stir-fry/deep-fry/bake/grill\n"
+            "6. weight_g估算可食用部分重量(克)\n"
         )
         user_instruction = "请根据图片识别所有可见的主要食材，并严格按照上述 JSON 结构输出。"
         if req.question:
@@ -1175,7 +1233,7 @@ async def vision_analyze(req: VisionAnalyzeRequest):
         messages = [
             {"role": "system", "content": [{"type": "text", "text": system_prompt}]},
             {"role": "user", "content": [
-                {"type": "image_url", "image_url": {"url": req.image_url}},
+                {"type": "image_url", "image_url": {"url": image_url}},
                 {"type": "text", "text": user_instruction},
             ]},
         ]
@@ -1184,6 +1242,7 @@ async def vision_analyze(req: VisionAnalyzeRequest):
         completion = client.chat.completions.create(
             model=QWEN_VL_MODEL,
             messages=messages,
+            temperature=0,  # 设为0消除随机性，确保识别一致性
         )
     except Exception as e:
         logger.error(f"调用 Qwen-VL 失败: {e}", exc_info=True)
@@ -1281,28 +1340,82 @@ async def vision_analyze(req: VisionAnalyzeRequest):
             },
         }
     
-    # 标准模式和基线列表模式：处理 foods 数组
-    for dish in llm_json.get("foods", []) or []:
-        method = dish.get("cooking_method")
-        category = dish.get("category")  # 获取分类用于兜底查询
-        for ing in dish.get("ingredients", []) or []:
-            name = ing.get("name_en") or ing.get("name") or ""
-            weight = ing.get("weight_g") or ing.get("delta_consumed_g") or 0
+    # 标准模式：优先使用 VLM 直接返回的营养数据
+    vlm_has_nutrition = False
+    vlm_total = llm_json.get("total", {})
+    if vlm_total and vlm_total.get("calories_kcal") is not None:
+        vlm_has_nutrition = True
+    
+    # 处理 foods 数组 - 从 ingredients 提取食材并计算营养
+    foods_output = []
+    mapper = get_food_mapper()
+    
+    for food in llm_json.get("foods", []) or []:
+        category = food.get("category", "meal")
+        cooking_method = food.get("cooking_method", "raw")
+        
+        # 从 ingredients 提取食材
+        ingredients = food.get("ingredients", []) or []
+        if not ingredients:
+            # 兼容简化格式：直接使用 food 级别的信息
+            name = food.get("name") or food.get("name_en") or food.get("dish_name") or ""
+            name_cn = food.get("name_cn") or food.get("dish_name_cn") or name
+            weight = food.get("weight_g") or food.get("total_weight_g") or 0
             try:
                 weight_val = float(weight)
-            except Exception:
+            except:
                 weight_val = 0.0
-            if not name or weight_val <= 0:
+            if name and weight_val > 0:
+                ingredients = [{"name_en": name, "name_cn": name_cn, "weight_g": weight_val, "confidence": 0.9}]
+        
+        for ing in ingredients:
+            ing_name = ing.get("name_en") or ing.get("name") or ""
+            ing_name_cn = ing.get("name_cn") or ing_name
+            ing_weight = ing.get("weight_g") or 0
+            ing_confidence = ing.get("confidence", 0.9)
+            
+            try:
+                ing_weight_val = float(ing_weight)
+            except:
+                ing_weight_val = 0.0
+            
+            if not ing_name or ing_weight_val <= 0:
                 continue
-            food_inputs.append(FoodInput(name=name, weight_g=weight_val, cooking_method=method, category=category))
+            
+            # 使用快速映射器计算营养
+            nutrition = mapper.calculate_nutrition(ing_name, ing_weight_val, category)
+            
+            food_data = {
+                "name": ing_name,
+                "name_cn": ing_name_cn,
+                "weight_g": ing_weight_val,
+                "category": category,
+                "calories_kcal": nutrition["calories"],
+                "protein_g": nutrition["protein"],
+                "carbs_g": nutrition["carbs"],
+                "fat_g": nutrition["fat"],
+                "confidence": min(ing_confidence, nutrition["confidence"]),
+            }
+            
+            foods_output.append(food_data)
+            food_inputs.append(FoodInput(
+                name=ing_name, 
+                weight_g=ing_weight_val, 
+                cooking_method=cooking_method,
+                category=category
+            ))
 
-    if not food_inputs:
+    if not food_inputs and not foods_output:
         raise HTTPException(status_code=500, detail="未能从图像中识别出有效食材")
 
-    foods_payload = [_food_input_to_dict(f) for f in food_inputs]
-    totals = calculate_nutrition(foods_payload)
+    # 计算总营养（直接汇总，无需额外查询）
+    totals = {
+        "calories": round(sum(f.get("calories_kcal", 0) or 0 for f in foods_output), 1),
+        "protein": round(sum(f.get("protein_g", 0) or 0 for f in foods_output), 1),
+        "carbs": round(sum(f.get("carbs_g", 0) or 0 for f in foods_output), 1),
+        "fat": round(sum(f.get("fat_g", 0) or 0 for f in foods_output), 1),
+    }
 
-    # 提取 suggestion（如果有）
     suggestion = llm_json.get("suggestion", "")
     
     return {
@@ -1310,7 +1423,7 @@ async def vision_analyze(req: VisionAnalyzeRequest):
         "mode": "start" if not is_update_mode else "update",
         "suggestion": suggestion,
         "snapshot": {
-            "foods": [f.dict() for f in food_inputs],
+            "foods": foods_output if foods_output else [f.dict() for f in food_inputs],
             "nutrition": totals,
         },
     }
