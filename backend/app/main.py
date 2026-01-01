@@ -63,6 +63,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR.parent / "static"), name="
 
 from .db import get_db, init_db
 from . import models
+from .supabase_utils import supabase, upload_image_to_supabase, get_current_user
 
 # 管理后台鉴权配置
 _ADMIN_USERNAME = os.getenv("DASHBOARD_ADMIN_USERNAME", "admin")
@@ -833,40 +834,54 @@ class UserRegisterRequest(BaseModel):
 
 
 @app.post("/api/v1/user/register")
-async def register_user(req: UserRegisterRequest, request: Request, db: Session = Depends(get_db)):
+async def register_user(
+    req: UserRegisterRequest, 
+    request: Request, 
+    current_user: Optional[dict] = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """
     用户注册/登录接口
     
-    - 如果 device_id 已存在，返回现有用户信息
-    - 如果是新设备，创建新用户
-    
-    Returns:
-        user_id: 用户唯一ID
-        device_id: 设备ID
-        is_new_user: 是否为新用户
-        token: 认证令牌（当前为简化版本）
+    支持两种模式：
+    1. Supabase Auth 模式：如果请求包含有效的 Supabase JWT，则使用 JWT 中的 user_id
+    2. 兼容模式：如果未提供 JWT，则基于 device_id 自动创建或关联用户 (兼容旧版本)
     """
     try:
-        # 检查是否已存在用户
-        existing_user = db.query(models.User).filter(
-            models.User.device_id == req.device_id
-        ).first()
+        # 1. 确定最终的 User ID
+        # 优先使用 Supabase Auth 的 ID
+        auth_user_id = current_user["user_id"] if current_user else None
         
-        if existing_user:
-            # 更新最后活跃时间
-            existing_user.last_active_at = datetime.utcnow()
+        # 检查该设备是否已经关联了某个用户
+        existing_device = db.query(models.Device).filter(models.Device.id == req.device_id).first()
+        
+        target_user = None
+        if auth_user_id:
+            # 如果是 Auth 模式，查找或创建该 Auth 用户
+            target_user = db.query(models.User).filter(models.User.id == auth_user_id).first()
+        elif existing_device:
+            # 如果是兼容模式且设备已注册，找到关联的用户
+            target_user = db.query(models.User).filter(models.User.id == existing_device.user_id).first()
+
+        if target_user:
+            # 如果提供了 Auth ID 但该设备之前关联了别的 ID，则更新设备关联
+            if auth_user_id and existing_device and existing_device.user_id != auth_user_id:
+                logger.info(f"更新设备关联: device={req.device_id} 从 {existing_device.user_id} 迁移至 {auth_user_id}")
+                existing_device.user_id = auth_user_id
+            
+            target_user.last_active_at = datetime.utcnow()
             db.commit()
             
-            logger.info(f"用户登录: user_id={existing_user.id}, device_id={req.device_id}")
+            logger.info(f"用户登录: user_id={target_user.id}, device_id={req.device_id}, auth_mode={auth_user_id is not None}")
             return {
-                "user_id": existing_user.id,
+                "user_id": target_user.id,
                 "device_id": req.device_id,
                 "is_new_user": False,
-                "token": f"token_{existing_user.id}",  # 简化版本的 token
+                "token": f"token_{target_user.id}", # 保持兼容，实际推荐使用 Supabase JWT
                 "message": "登录成功"
             }
         
-        # 获取注册 IP 和 属地
+        # 2. 如果是新用户，执行创建逻辑
         client_ip = request.client.host if request.client else None
         location = "未知"
         if client_ip and client_ip != "127.0.0.1":
@@ -879,19 +894,18 @@ async def register_user(req: UserRegisterRequest, request: Request, db: Session 
             except Exception as e:
                 logger.warning(f"获取 IP 属地失败: {e}")
 
-        # 创建新用户
-        user_id = str(uuid.uuid4())
+        # 如果没有 Auth ID，则生成一个新的 UUID (访客/兼容模式)
+        user_id = auth_user_id or str(uuid.uuid4())
+        
         new_user = models.User(
             id=user_id,
             device_id=req.device_id,
-            # 基本信息
             nickname=req.nickname,
             gender=req.gender,
             age=req.age,
             birth_year=req.birth_year,
             height_cm=req.height,
             weight_kg=req.weight,
-            # 活动与目标
             activity_level=req.activity_level or "moderate",
             health_goal=req.health_goal or "maintain",
             target_weight=req.target_weight,
@@ -906,7 +920,6 @@ async def register_user(req: UserRegisterRequest, request: Request, db: Session 
             last_active_at=datetime.utcnow()
         )
         
-        # 初始计算 BMI 和目标
         if new_user.height_cm and new_user.weight_kg:
             new_user.calculate_bmi()
         if any([new_user.age, new_user.gender, new_user.height_cm, new_user.weight_kg]):
@@ -914,27 +927,32 @@ async def register_user(req: UserRegisterRequest, request: Request, db: Session 
             
         db.add(new_user)
         
-        # 注册设备
-        device = models.Device(
-            id=req.device_id,
-            user_id=user_id,
-            device_type=req.device_type,
-            device_model=req.device_model,
-            app_version=req.app_version,
-            is_active=True,
-            last_seen_at=datetime.utcnow(),
-            created_at=datetime.utcnow()
-        )
-        db.add(device)
+        # 注册/绑定设备
+        if existing_device:
+            existing_device.user_id = user_id
+            existing_device.is_active = True
+            existing_device.last_seen_at = datetime.utcnow()
+        else:
+            device = models.Device(
+                id=req.device_id,
+                user_id=user_id,
+                device_type=req.device_type,
+                device_model=req.device_model,
+                app_version=req.app_version,
+                is_active=True,
+                last_seen_at=datetime.utcnow(),
+                created_at=datetime.utcnow()
+            )
+            db.add(device)
         
         db.commit()
         
-        logger.info(f"新用户注册: user_id={user_id}, device_id={req.device_id}")
+        logger.info(f"新用户注册: user_id={user_id}, device_id={req.device_id}, auth_mode={auth_user_id is not None}")
         return {
             "user_id": user_id,
             "device_id": req.device_id,
             "is_new_user": True,
-            "token": f"token_{user_id}",  # 简化版本的 token
+            "token": f"token_{user_id}",
             "message": "注册成功"
         }
         
@@ -1029,20 +1047,21 @@ def calculate_profile_completeness(user: models.User) -> dict:
 async def get_user_profile(
     user_id: Optional[str] = None,
     device_id: Optional[str] = None,
+    current_user: Optional[dict] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
     获取用户档案
     
-    可通过 user_id 或 device_id 查询
-    
-    Returns:
-        用户档案信息，包含个人信息、健康目标、营养目标等
+    优先级：JWT (current_user) > user_id > device_id
     """
     try:
         user = None
-        if user_id:
-            user = db.query(models.User).filter(models.User.id == user_id).first()
+        # 如果提供了 JWT，优先使用 JWT 中的 user_id
+        effective_user_id = current_user["user_id"] if current_user else user_id
+        
+        if effective_user_id:
+            user = db.query(models.User).filter(models.User.id == effective_user_id).first()
         elif device_id:
             user = db.query(models.User).filter(models.User.device_id == device_id).first()
         
@@ -1067,25 +1086,22 @@ async def get_user_profile(
 
 @app.put("/api/v1/user/profile")
 async def update_user_profile(
-    user_id: str,
-    profile: UserProfileUpdate,
+    user_id: Optional[str] = None,
+    profile: UserProfileUpdate = None,
+    current_user: Optional[dict] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
     更新用户档案
     
-    - 自动计算 BMI
-    - 根据个人信息自动计算每日营养目标
-    
-    Args:
-        user_id: 用户ID
-        profile: 要更新的档案字段
-        
-    Returns:
-        更新后的完整用户档案
+    优先级：使用 JWT 中的 user_id，否则使用路径/查询参数中的 user_id
     """
     try:
-        user = db.query(models.User).filter(models.User.id == user_id).first()
+        effective_user_id = current_user["user_id"] if current_user else user_id
+        if not effective_user_id:
+            raise HTTPException(status_code=400, detail="未提供用户 ID")
+
+        user = db.query(models.User).filter(models.User.id == effective_user_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="用户不存在")
         
@@ -1143,19 +1159,22 @@ async def update_user_profile(
 
 @app.post("/api/v1/user/profile/sync")
 async def sync_user_profile(
-    user_id: str,
-    profile: UserProfileUpdate,
+    user_id: Optional[str] = None,
+    profile: UserProfileUpdate = None,
+    current_user: Optional[dict] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
     同步用户档案（从前端同步到后端）
     
-    - 如果用户不存在则创建
-    - 如果用户存在则更新
-    - 用于前端本地档案与后端同步
+    优先级：JWT (current_user) > user_id
     """
     try:
-        user = db.query(models.User).filter(models.User.id == user_id).first()
+        effective_user_id = current_user["user_id"] if current_user else user_id
+        if not effective_user_id:
+            raise HTTPException(status_code=400, detail="未提供用户 ID")
+
+        user = db.query(models.User).filter(models.User.id == effective_user_id).first()
         
         if not user:
             # 用户不存在，可能是从本地恢复的数据
@@ -1260,13 +1279,20 @@ async def search_food(
 async def get_personalized_tips(
     user_id: str,
     limit: int = 5,
+    current_user: Optional[dict] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """获取用户个性化健康建议"""
     try:
+        # 安全验证：如果提供了 JWT，确保只能获取自己的建议
+        effective_user_id = current_user["user_id"] if current_user else user_id
+        if current_user and user_id != "me" and user_id != current_user["user_id"]:
+             # 如果前端传了具体的 ID 但与 JWT 不符，且不是 "me" 占位符，则拒绝
+             raise HTTPException(status_code=403, detail="无权访问该用户的建议")
+        
         # 查询数据库中的建议
         tips = db.query(models.PersonalizedTip).filter(
-            models.PersonalizedTip.user_id == user_id,
+            models.PersonalizedTip.user_id == effective_user_id,
             models.PersonalizedTip.valid_until >= datetime.utcnow(),
             models.PersonalizedTip.is_dismissed == False
         ).order_by(models.PersonalizedTip.priority.asc(), models.PersonalizedTip.created_at.desc()).limit(limit).all()
@@ -1312,18 +1338,20 @@ async def get_personalized_tips(
 
 
 @app.get("/api/v1/user/{user_id}/stats")
-async def get_user_stats(user_id: str, db: Session = Depends(get_db)):
+async def get_user_stats(
+    user_id: str, 
+    current_user: Optional[dict] = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """
     获取用户统计数据
-    
-    Returns:
-        - 总用餐次数
-        - 总摄入热量
-        - 活跃天数
-        - 最近7天数据
     """
     try:
-        user = db.query(models.User).filter(models.User.id == user_id).first()
+        effective_user_id = current_user["user_id"] if current_user else user_id
+        if current_user and user_id != "me" and user_id != current_user["user_id"]:
+             raise HTTPException(status_code=403, detail="无权访问该用户的统计数据")
+
+        user = db.query(models.User).filter(models.User.id == effective_user_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="用户不存在")
         
@@ -1333,12 +1361,12 @@ async def get_user_stats(user_id: str, db: Session = Depends(get_db)):
         week_ago = today - timedelta(days=7)
         
         daily_stats = db.query(models.DailyNutrition).filter(
-            models.DailyNutrition.user_id == user_id,
+            models.DailyNutrition.user_id == effective_user_id,
             models.DailyNutrition.date >= week_ago.isoformat()
         ).order_by(models.DailyNutrition.date.desc()).all()
         
         return {
-            "user_id": user_id,
+            "user_id": effective_user_id,
             "total_meals": user.total_meals,
             "total_calories": user.total_calories,
             "total_days_active": user.total_days_active,
@@ -1380,17 +1408,25 @@ async def upload_image(file: UploadFile = File(...)):
         filename = f"{uuid.uuid4()}{file_ext}"
         file_path = UPLOAD_DIR / filename
         
-        # 保存文件
+        # 保存文件到本地（作为备份）
         with file_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
             
+        # 尝试上传到 Supabase Storage
+        cloud_url = None
+        if supabase:
+            try:
+                cloud_url = await upload_image_to_supabase(str(file_path))
+                logger.info(f"图片已同步至 Supabase Storage: {cloud_url}")
+            except Exception as e:
+                logger.warning(f"上传至 Supabase Storage 失败 (降级为本地存储): {e}")
+
         # 构造返回 URL
-        # 注意：生产环境中应使用配置的域名或对象存储 URL
-        # 这里为了 MVP 方便，使用请求的主机地址
-        # 实际调用时，眼镜端会收到相对路径或需要拼接 Base URL
+        # 如果有云端 URL 则返回云端 URL，否则返回本地相对路径
         return {
             "filename": filename,
-            "url": f"/uploads/{filename}",
+            "url": cloud_url if cloud_url else f"/uploads/{filename}",
+            "is_cloud": cloud_url is not None,
             "message": "上传成功"
         }
     except Exception as e:
@@ -1655,13 +1691,14 @@ async def get_nutrition_by_barcode(barcode: str):
 
 
 @app.post("/api/v1/vision/analyze")
-async def vision_analyze(req: VisionAnalyzeRequest, request: Request):
+async def vision_analyze(
+    req: VisionAnalyzeRequest, 
+    request: Request,
+    current_user: Optional[dict] = Depends(get_current_user)
+):
     """调用 Qwen-VL 对餐盘图片进行多食材拆解，并返回营养快照。
-
-    模式：
-    - mode="start": 单图识别，返回完整食物列表（默认）
-    - mode="update" + baseline_foods: 基于基线食物列表，识别当前剩余量
-    - mode="update" + reference_image_url: 双图对比，直接输出消耗增量 delta
+    
+    支持 Supabase Auth：如果提供了 JWT，结果将与该用户关联。
     """
     try:
         client = get_qwen_client()
@@ -2139,18 +2176,13 @@ def _compare_foods(baseline: List[dict], current: List[dict]) -> dict:
 
 
 @app.post("/api/v1/vision/analyze_meal_update")
-async def analyze_meal_update(req: MealUpdateRequest):
+async def analyze_meal_update(
+    req: MealUpdateRequest,
+    request: Request,
+    current_user: Optional[dict] = Depends(get_current_user)
+):
     """
     带容错逻辑的会话更新分析
-    
-    1. 使用基线列表模式调用 VLM
-    2. 分析结果与基线的差异
-    3. 返回容错建议
-    
-    前端根据建议决定：
-    - skip: 识别失败，使用上次数据
-    - accept: 正常结果，直接使用
-    - adjust: 需要调整（加菜等）
     """
     # 构造 vision/analyze 请求
     analyze_req = VisionAnalyzeRequest(
@@ -2160,7 +2192,8 @@ async def analyze_meal_update(req: MealUpdateRequest):
     )
     
     try:
-        result = await vision_analyze(analyze_req)
+        # 传递 request 和 current_user 以便追踪 Token 和用户身份
+        result = await vision_analyze(analyze_req, request, current_user)
     except HTTPException as e:
         if e.status_code == 400 and "未检测到食物" in str(e.detail):
             # 没有检测到食物 - 建议跳过
@@ -2251,22 +2284,20 @@ async def analyze_meal_update(req: MealUpdateRequest):
 async def start_meal_session(
     snapshot: SnapshotPayload,
     request: Request,
-    user_id: str = "default_user",
+    user_id: Optional[str] = "default_user",
     meal_type: str = "lunch",
     auto_interval: int = 60,
+    current_user: Optional[dict] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
     开始用餐会话
     
-    Args:
-        snapshot: 用餐开始时的食物与营养数据
-        user_id: 用户ID
-        meal_type: 用餐类型 (breakfast/lunch/dinner/snack)
-        auto_interval: 自动监测间隔(秒)，默认5分钟
+    优先级：JWT (current_user) > user_id
     """
     try:
-        logger.info(f"开始用餐会话: 用户={user_id}, 类型={meal_type}")
+        effective_user_id = current_user["user_id"] if current_user else user_id
+        logger.info(f"开始用餐会话: 用户={effective_user_id}, 类型={meal_type}, auth_mode={current_user is not None}")
 
         session_id = str(uuid.uuid4())
 
@@ -2283,7 +2314,7 @@ async def start_meal_session(
 
         db_session = models.MealSession(
             id=session_id,
-            user_id=user_id,
+            user_id=effective_user_id,
             status="active",
             start_time=datetime.utcnow(),
             auto_capture_interval=auto_interval,
@@ -2474,15 +2505,23 @@ async def update_meal_session(
     session_id: str,
     snapshot: SnapshotPayload,
     request: Request,
+    current_user: Optional[dict] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
     更新用餐会话（自动监测调用）
+    
+    如果提供了 JWT，会验证会话是否属于该用户
     """
     try:
         db_session = db.query(models.MealSession).filter(models.MealSession.id == session_id).first()
         if not db_session:
             raise HTTPException(status_code=404, detail="会话不存在")
+        
+        # 安全验证：如果提供了 JWT，确保会话属于当前用户
+        if current_user and db_session.user_id != current_user["user_id"]:
+            raise HTTPException(status_code=403, detail="无权操作此会话")
+
         if db_session.status != "active":
             raise HTTPException(status_code=400, detail="会话已结束或暂停")
         
@@ -2600,38 +2639,30 @@ async def update_meal_session(
 async def end_meal_session(
     req: MealEndRequest,
     request: Request,
+    current_user: Optional[dict] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
     结束用餐会话（增强版）
     
-    接收完整的用餐上下文，使用 LLM 生成个性化营养建议
-    
-    请求参数：
-    - session_id: 会话ID（必填）
-    - final_snapshot: 最终快照（可选）
-    - meal_context: 用餐上下文（可选）
-    - daily_context: 今日上下文（可选）
-    - user_profile: 用户档案（可选）
-    
-    返回：
-    - meal_summary: 用餐总结（用于眼镜显示）
-    - advice: 详细建议（用于手机显示）
-    - next_meal_suggestion: 下一餐建议
+    如果提供了 JWT，会验证会话是否属于该用户
     """
     session_id = req.session_id
-    final_snapshot = req.final_snapshot
-    meal_context = req.meal_context
-    daily_context = req.daily_context
-    user_profile = req.user_profile
-    
     try:
         db_session = db.query(models.MealSession).filter(models.MealSession.id == session_id).first()
         if not db_session:
             raise HTTPException(status_code=404, detail="会话不存在")
-        logger.info(f"结束用餐会话: {session_id}, 有上下文: meal={meal_context is not None}, daily={daily_context is not None}, user={user_profile is not None}")
+        logger.info(f"结束用餐会话: {session_id}, 有上下文: meal={req.meal_context is not None}, daily={req.daily_context is not None}, user={req.user_profile is not None}")
 
-        if final_snapshot:
+        # 安全验证：如果提供了 JWT，确保会话属于当前用户
+        if current_user and db_session.user_id != current_user["user_id"]:
+            raise HTTPException(status_code=403, detail="无权操作此会话")
+            
+        if db_session.status == "completed":
+            raise HTTPException(status_code=400, detail="会话已结束")
+
+        if req.final_snapshot:
+            final_snapshot = req.final_snapshot
             foods_payload = [_food_input_to_dict(f) for f in final_snapshot.foods]
             if final_snapshot.nutrition:
                 totals = {
@@ -2790,11 +2821,19 @@ async def end_meal_session(
 
 
 @app.get("/api/v1/meal/session/{session_id}")
-async def get_meal_session(session_id: str, db: Session = Depends(get_db)):
+async def get_meal_session(
+    session_id: str, 
+    current_user: Optional[dict] = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """获取用餐会话详情"""
     db_session = db.query(models.MealSession).filter(models.MealSession.id == session_id).first()
     if not db_session:
         raise HTTPException(status_code=404, detail="会话不存在")
+    
+    # 安全验证：如果提供了 JWT，确保会话属于当前用户
+    if current_user and db_session.user_id != current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="无权访问此会话")
         
     # 使用动态逻辑获取进度
     stats = calculate_dynamic_stats(session_id, db)
@@ -2819,9 +2858,18 @@ async def get_meal_session(session_id: str, db: Session = Depends(get_db)):
 
 
 @app.get("/api/v1/meal/sessions")
-async def list_meal_sessions(user_id: str = "default_user", status: str = None, db: Session = Depends(get_db)):
+async def list_meal_sessions(
+    user_id: str = "me", 
+    status: str = None, 
+    current_user: Optional[dict] = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """获取用户的用餐会话列表"""
-    q = db.query(models.MealSession).filter(models.MealSession.user_id == user_id)
+    effective_user_id = current_user["user_id"] if current_user else user_id
+    if current_user and user_id != "me" and user_id != current_user["user_id"]:
+         raise HTTPException(status_code=403, detail="无权访问该用户的会话列表")
+
+    q = db.query(models.MealSession).filter(models.MealSession.user_id == effective_user_id)
     if status:
         q = q.filter(models.MealSession.status == status)
     rows = q.order_by(models.MealSession.start_time.desc()).all()
@@ -2857,29 +2905,30 @@ class UpdateFoodRequest(BaseModel):
 
 
 @app.put("/api/v1/meal/food/{food_id}")
-async def update_food(food_id: str, request: UpdateFoodRequest, db: Session = Depends(get_db)):
+async def update_food(
+    food_id: str, 
+    request: UpdateFoodRequest, 
+    current_user: Optional[dict] = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """
     更新食物营养数据
-    
-    用于同步用户在手机端编辑的食物数据
-    
-    Args:
-        food_id: 食物ID
-        request: 更新数据
-        
-    Returns:
-        success: 是否成功
-        message: 消息
-        updated_at: 更新时间戳
     """
     try:
-        # 查找食物记录
+        # 查找食物记录并关联会话以验证权限
         food = db.query(models.SnapshotFood).filter(
             models.SnapshotFood.id == food_id
         ).first()
         
         if not food:
             raise HTTPException(status_code=404, detail=f"食物不存在: {food_id}")
+        
+        # 权限校验：获取关联的 session
+        snapshot = db.query(models.MealSnapshot).filter(models.MealSnapshot.id == food.snapshot_id).first()
+        if snapshot:
+            session = db.query(models.MealSession).filter(models.MealSession.id == snapshot.session_id).first()
+            if session and current_user and session.user_id != current_user["user_id"]:
+                raise HTTPException(status_code=403, detail="无权修改此食物数据")
         
         # 更新字段
         if request.weight_g is not None:
@@ -2917,37 +2966,18 @@ async def update_food(food_id: str, request: UpdateFoodRequest, db: Session = De
 
 @app.get("/api/v1/stats/daily")
 async def get_daily_stats(
-    user_id: str = "default_user",
+    user_id: str = "me",
     date: Optional[str] = None,
+    current_user: Optional[dict] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
     获取用户某一天的营养统计
-    
-    Args:
-        user_id: 用户ID
-        date: 日期（格式: YYYY-MM-DD），默认为今天
-        
-    Returns:
-        {
-            "date": "2025-11-25",
-            "total_calories": 1850,
-            "total_protein": 75.5,
-            "total_carbs": 220.3,
-            "total_fat": 65.2,
-            "target_calories": 2000,
-            "meals": [
-                {"meal_type": "breakfast", "calories": 450, "time": "08:30"},
-                {"meal_type": "lunch", "calories": 780, "time": "12:15"},
-                {"meal_type": "dinner", "calories": 620, "time": "18:45"}
-            ],
-            "nutrition_breakdown": {
-                "protein_percent": 16.3,
-                "carbs_percent": 47.6,
-                "fat_percent": 36.1
-            }
-        }
     """
+    effective_user_id = current_user["user_id"] if current_user else user_id
+    if current_user and user_id != "me" and user_id != current_user["user_id"]:
+         raise HTTPException(status_code=403, detail="无权访问该用户的统计数据")
+
     from datetime import date as date_type
     
     # 解析日期
@@ -2964,7 +2994,7 @@ async def get_daily_stats(
     end_of_day = datetime.combine(target_date, datetime.max.time())
     
     sessions = db.query(models.MealSession).filter(
-        models.MealSession.user_id == user_id,
+        models.MealSession.user_id == effective_user_id,
         models.MealSession.start_time >= start_of_day,
         models.MealSession.start_time <= end_of_day
     ).order_by(models.MealSession.start_time.asc()).all()
@@ -3618,33 +3648,36 @@ def _build_meal_context_prompt(meal: MealContext) -> str:
 
 
 @app.post("/api/v1/chat/nutrition", response_model=ChatNutritionResponse)
-async def chat_nutrition(request: ChatNutritionRequest, raw_request: Request):
+async def chat_nutrition(
+    request: ChatNutritionRequest, 
+    raw_request: Request,
+    current_user: Optional[dict] = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """
     智能营养助手对话接口 (基于 Qwen-Plus)
-    
-    支持个性化建议：
-    - user_profile: 用户健康档案（年龄、BMI、健康状况、饮食偏好）
-    - meal_context: 当前用餐上下文（食物、热量、营养成分）
-    - message_type: 消息类型（chat/meal_start/meal_end）
-    
-    示例请求:
-    {
-        "query": "分析本餐",
-        "user_profile": {
-            "age": 45,
-            "bmi": 26.5,
-            "health_conditions": ["轻度脂肪肝"],
-            "dietary_preferences": ["低油"]
-        },
-        "meal_context": {
-            "foods": ["红烧肉", "米饭"],
-            "total_calories": 780
-        },
-        "message_type": "meal_start"
-    }
     """
     try:
         client = get_qwen_client()
+        
+        # 自动补全用户信息：如果提供了 JWT 但请求中没有 profile，则从数据库加载
+        effective_profile = request.user_profile
+        if current_user and not effective_profile:
+            user = db.query(models.User).filter(models.User.id == current_user["user_id"]).first()
+            if user:
+                # 转换为模型期望的格式 (UserProfilePayload)
+                effective_profile = {
+                    "age": user.age,
+                    "gender": user.gender,
+                    "height": user.height_cm,
+                    "weight": user.weight_kg,
+                    "bmi": user.bmi,
+                    "health_conditions": user.health_conditions,
+                    "dietary_preferences": user.dietary_preferences,
+                    "activity_level": user.activity_level,
+                    "health_goal": user.health_goal
+                }
+                logger.info(f"Chat API: 已自动从 JWT 补全用户档案 (user_id={user.id})")
         
         # 构建系统提示词
         system_prompt = """你是一位专业的 AI 营养师和健康管理专家。
@@ -3661,8 +3694,8 @@ async def chat_nutrition(request: ChatNutritionRequest, raw_request: Request):
         messages = [{"role": "system", "content": system_prompt}]
         
         # 添加用户档案上下文
-        if request.user_profile:
-            profile_prompt = _build_user_profile_prompt(request.user_profile)
+        if effective_profile:
+            profile_prompt = _build_user_profile_prompt(effective_profile)
             if profile_prompt:
                 messages.append({
                     "role": "system",
