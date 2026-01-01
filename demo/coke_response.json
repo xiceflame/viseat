@@ -1,0 +1,47 @@
+{
+  "raw_llm": {
+    "is_food": true,
+    "suggestion": "可乐含糖量较高，建议适量饮用并搭配健康食物。",
+    "foods": [
+      {
+        "dish_name": "可口可乐",
+        "dish_name_cn": "可口可乐",
+        "category": "beverage",
+        "cooking_method": "raw",
+        "ingredients": [
+          {
+            "name_en": "Coca-Cola",
+            "name_cn": "可口可乐",
+            "weight_g": 300,
+            "confidence": 0.95
+          }
+        ],
+        "total_weight_g": 300,
+        "confidence": 0.95
+      }
+    ]
+  },
+  "mode": "start",
+  "suggestion": "可乐含糖量较高，建议适量饮用并搭配健康食物。",
+  "snapshot": {
+    "foods": [
+      {
+        "name": "Coca-Cola",
+        "name_cn": "可口可乐",
+        "weight_g": 300,
+        "category": "beverage",
+        "calories_kcal": 111,
+        "protein_g": 0.2,
+        "carbs_g": 28.8,
+        "fat_g": 0.1,
+        "confidence": 0.95
+      }
+    ],
+    "nutrition": {
+      "calories": 111,
+      "protein": 0.2,
+      "carbs": 28.8,
+      "fat": 0.1
+    }
+  }
+}

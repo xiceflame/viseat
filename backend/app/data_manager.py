@@ -30,12 +30,13 @@ class DataManager:
         endpoint: str,
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        method: str = "POST",
+        request_size: int = 0,
         status_code: int = 200,
         response_time_ms: int = 0,
         food_count: Optional[int] = None,
         total_calories: Optional[float] = None,
-        category: Optional[str] = None,
-        model_used: Optional[str] = None,
         error_message: Optional[str] = None,
     ) -> ApiLog:
         """记录 API 调用"""
@@ -43,13 +44,14 @@ class DataManager:
             id=str(uuid.uuid4()),
             user_id=user_id,
             device_id=device_id,
+            session_id=session_id,
             endpoint=endpoint,
+            method=method,
+            request_size=request_size,
             status_code=status_code,
             response_time_ms=response_time_ms,
             food_count=food_count,
             total_calories=total_calories,
-            category=category,
-            model_used=model_used,
             error_message=error_message,
         )
         self.db.add(log)
@@ -189,11 +191,22 @@ class DataManager:
         meals_recorded = len(vision_logs)
         avg_calories = total_calories / meals_recorded if meals_recorded > 0 else 0
         
-        # 食物分类统计
+        def _group_from_endpoint(endpoint: str) -> str:
+            if not endpoint:
+                return "unknown"
+            path = endpoint.split("?", 1)[0].strip()
+            parts = [p for p in path.split("/") if p]
+            if len(parts) >= 3 and parts[0] == "api" and parts[1].startswith("v"):
+                return parts[2]
+            if parts:
+                return parts[0]
+            return "unknown"
+
+        # API 分类统计（按 /api/v1/<group> 聚合）
         category_dist = {}
-        for log in vision_logs:
-            cat = log.category or "unknown"
-            category_dist[cat] = category_dist.get(cat, 0) + 1
+        for log in logs:
+            group = _group_from_endpoint(log.endpoint)
+            category_dist[group] = category_dist.get(group, 0) + 1
         
         # 性能指标
         response_times = [log.response_time_ms for log in logs if log.response_time_ms]

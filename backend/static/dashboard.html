@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VisEat 管理后台 - 运维与业务监控</title>
+  <!-- 引入 ECharts -->
+  <script src="https://fastly.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+  <!-- 引入 Lucide 图标 -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    :root {
+      --bg: #0b0f1a;
+      --sidebar: #111827;
+      --card: #161e2e;
+      --card-hover: #1f2937;
+      --text: #f3f4f6;
+      --muted: #9ca3af;
+      --accent: #38bdf8;
+      --accent-glow: rgba(56, 189, 248, 0.2);
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --border: rgba(255, 255, 255, 0.05);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Inter", -apple-system, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* 侧边栏 */
+    aside {
+      width: 240px;
+      background: var(--sidebar);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 24px 16px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 8px 32px;
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--accent);
+    }
+    nav { flex: 1; }
+    nav a {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      color: var(--muted);
+      text-decoration: none;
+      border-radius: 8px;
+      margin-bottom: 4px;
+      transition: all 0.2s;
+      font-size: 14px;
+    }
+    nav a:hover, nav a.active {
+      background: var(--card-hover);
+      color: var(--text);
+    }
+    nav a.active {
+      color: var(--accent);
+      background: var(--accent-glow);
+    }
+
+    /* 主内容区 */
+    main {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px 32px;
+      position: relative;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 32px;
+    }
+    .header-left h1 { margin: 0; font-size: 24px; font-weight: 700; }
+    .header-left p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+    .header-right { display: flex; gap: 12px; align-items: center; }
+
+    .btn {
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: opacity 0.2s;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      text-decoration: none;
+    }
+    .btn:hover { opacity: 0.8; }
+    .btn-primary { background: var(--accent); color: var(--bg); border: none; }
+
+    /* KPI 卡片 */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 20px;
+      margin-bottom: 32px;
+    }
+    .kpi-card {
+      background: var(--card);
+      padding: 20px;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      transition: transform 0.2s;
+    }
+    .kpi-card:hover { transform: translateY(-2px); border-color: rgba(56, 189, 248, 0.3); }
+    .kpi-head { display: flex; justify-content: space-between; align-items: flex-start; color: var(--muted); margin-bottom: 12px; }
+    .kpi-head i { width: 20px; height: 20px; color: var(--accent); }
+    .kpi-val { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
+    .kpi-sub { font-size: 13px; color: var(--muted); }
+    .trend-up { color: var(--success); }
+    .trend-down { color: var(--danger); }
+
+    /* 图表区 */
+    .charts-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 20px;
+      margin-bottom: 32px;
+    }
+    .chart-container {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 20px;
+      border: 1px solid var(--border);
+      height: 360px;
+    }
+    .chart-title { font-size: 16px; font-weight: 600; margin-bottom: 20px; color: var(--text); }
+
+    /* 表格 */
+    .content-grid {
+      display: grid;
+      grid-template-columns: 1.5fr 1fr;
+      gap: 20px;
+    }
+    .panel {
+      background: var(--card);
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+    }
+    .panel-head {
+      padding: 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .panel-title { font-size: 16px; font-weight: 600; }
+    .panel-body { padding: 0; overflow-x: auto; max-height: 500px; overflow-y: auto; }
+
+    table { width: 100%; border-collapse: collapse; text-align: left; }
+    th { padding: 16px; font-size: 12px; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border); }
+    td { padding: 16px; font-size: 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    
+    .avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--card-hover); display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--accent); border: 1px solid var(--accent); }
+    .badge { padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; }
+    .badge-success { background: rgba(16, 185, 129, 0.1); color: var(--success); }
+    .badge-warning { background: rgba(245, 158, 11, 0.1); color: var(--warning); }
+    .badge-danger { background: rgba(239, 68, 68, 0.1); color: var(--danger); }
+
+    /* 图片墙 */
+    .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; padding: 20px; }
+    .img-card { position: relative; border-radius: 12px; overflow: hidden; aspect-ratio: 1; background: var(--bg); border: 1px solid var(--border); }
+    .img-card img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.3s; }
+    .img-card:hover img { transform: scale(1.1); }
+    .img-info { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.7); padding: 6px 10px; font-size: 10px; backdrop-filter: blur(4px); pointer-events: none; }
+    .analysis-overlay {
+      position: absolute; inset: 0; background: rgba(0,0,0,0.85); color: white; padding: 12px; font-size: 11px;
+      opacity: 0; transition: opacity 0.2s; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;
+    }
+    .img-card:hover .analysis-overlay { opacity: 1; }
+    .analysis-tag { display: inline-block; background: var(--accent-glow); color: var(--accent); padding: 2px 6px; border-radius: 4px; margin-right: 4px; margin-bottom: 4px; font-size: 10px; border: 1px solid var(--border); }
+
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-thumb { background: var(--card-hover); border-radius: 10px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+  </style>
+</head>
+<body>
+  <aside>
+    <div class="brand">
+      <i data-lucide="zap"></i>
+      <span>VisEat Admin</span>
+    </div>
+    <nav>
+      <a href="/dashboard"><i data-lucide="bar-chart-2"></i>概览监控</a>
+      <a href="/image-audit"><i data-lucide="image"></i>图片审查</a>
+      <a href="/users-admin"><i data-lucide="users"></i>用户管理</a>
+    </nav>
+    <div style="margin-top: auto;">
+      <a href="/" class="btn" style="width: 100%; justify-content: center;"><i data-lucide="home"></i> 返回主页</a>
+    </div>
+  </aside>
+
+  <main>
+    <header>
+      <div class="header-left">
+        <h1>仪表盘总览</h1>
+        <p id="timeRange">数据实时更新 · 每 60s 刷新</p>
+      </div>
+      <div class="header-right">
+        <div id="refreshPill" class="badge badge-success">
+          <i data-lucide="refresh-cw" style="width: 12px; height: 12px; margin-right: 4px;"></i>
+          已更新: <span id="lastUpdated">-</span>
+        </div>
+        <button class="btn" onclick="loadData()"><i data-lucide="refresh-ccw"></i> 手动刷新</button>
+      </div>
+    </header>
+
+    <div class="kpi-grid" id="kpiGrid">
+      <!-- 动态填充 KPI -->
+    </div>
+
+    <div class="charts-grid">
+      <div class="chart-container">
+        <div class="chart-title">核心业务趋势 (近7天)</div>
+        <div id="mainChart" style="height: 300px;"></div>
+      </div>
+      <div class="chart-container">
+        <div class="chart-title">系统流量监控 (24h)</div>
+        <div id="opsChart" style="height: 300px;"></div>
+      </div>
+    </div>
+
+    <div class="content-grid">
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">注册用户列表</div>
+          <button class="btn" style="padding: 4px 12px; font-size: 12px;">查看全部</button>
+        </div>
+        <div class="panel-body">
+          <table id="userTable">
+            <thead>
+              <tr>
+                <th>用户</th>
+                <th>基础信息</th>
+                <th>健康目标</th>
+                <th>活跃统计</th>
+                <th>最后活跃</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- 动态加载 -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">近期上传图片</div>
+          <div class="header-right">
+            <span class="sub" style="font-size: 12px;">近 20 张</span>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="gallery" id="recentGallery">
+            <!-- 动态加载 -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // 初始化 Lucide 图标
+    lucide.createIcons();
+
+    let mainChart, opsChart;
+
+    const fmt = (n, digits = 0) => {
+      if (n === null || n === undefined || Number.isNaN(n)) return '-';
+      return Number(n).toLocaleString('en-US', { maximumFractionDigits: digits, minimumFractionDigits: digits });
+    };
+
+    function initCharts() {
+      mainChart = echarts.init(document.getElementById('mainChart'), 'dark');
+      opsChart = echarts.init(document.getElementById('opsChart'), 'dark');
+      window.addEventListener('resize', () => {
+        mainChart.resize();
+        opsChart.resize();
+      });
+    }
+
+    function renderKpis(data) {
+      const { users, meals, ops } = data;
+      const kpis = [
+        { title: '总注册用户', val: users.total, sub: `24h内新增: ${users.new_24h}`, icon: 'users' },
+        { title: '活跃用户 (24h)', val: users.active_24h, sub: '有请求或记录', icon: 'zap' },
+        { title: '完成会话 (24h)', val: meals.sessions_completed_24h, sub: `总发起: ${meals.sessions_24h}`, icon: 'check-circle' },
+        { title: 'API 请求量 (24h)', val: ops.requests_24h, sub: `成功率: ${fmt((1 - ops.error_rate) * 100, 1)}%`, icon: 'activity' },
+        { title: '平均响应延迟', val: `${ops.avg_latency_ms}ms`, sub: '全接口均值', icon: 'clock' },
+      ];
+
+      document.getElementById('kpiGrid').innerHTML = kpis.map(k => `
+        <div class="kpi-card">
+          <div class="kpi-head">
+            <span>${k.title}</span>
+            <i data-lucide="${k.icon}"></i>
+          </div>
+          <div class="kpi-val">${fmt(k.val)}</div>
+          <div class="kpi-sub">${k.sub}</div>
+        </div>
+      `).join('');
+      lucide.createIcons();
+    }
+
+    function renderMainTrend(trends) {
+      const dates = trends.map(t => t.date.slice(5));
+      const option = {
+        backgroundColor: 'transparent',
+        tooltip: { trigger: 'axis', backgroundColor: 'rgba(17, 24, 39, 0.8)', borderColor: '#38bdf8', textStyle: { color: '#fff' } },
+        legend: { data: ['总用户', '活跃用户', '用餐会话'], textStyle: { color: '#9ca3af' }, top: 0 },
+        grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+        xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } } },
+        yAxis: { type: 'value', splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } } },
+        series: [
+          { name: '总用户', type: 'line', smooth: true, data: trends.map(t => t.total_users), itemStyle: { color: '#38bdf8' }, areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{offset: 0, color: 'rgba(56, 189, 248, 0.3)'}, {offset: 1, color: 'transparent'}]) } },
+          { name: '活跃用户', type: 'bar', data: trends.map(t => t.active_users), itemStyle: { color: '#10b981' } },
+          { name: '用餐会话', type: 'line', smooth: true, data: trends.map(t => t.meal_sessions), itemStyle: { color: '#f59e0b' } }
+        ]
+      };
+      mainChart.setOption(option);
+    }
+
+    function renderOpsTrend(timeSeries) {
+      const recent = timeSeries.slice(-60); // 仅展示最近60个点
+      const option = {
+        backgroundColor: 'transparent',
+        tooltip: { trigger: 'axis' },
+        grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+        xAxis: { type: 'category', data: recent.map(t => t.timestamp.slice(11, 16)), axisLine: { show: false } },
+        yAxis: { type: 'value', splitLine: { show: false } },
+        series: [{
+          name: '请求数', type: 'line', symbol: 'none', smooth: true,
+          data: recent.map(t => t.requests),
+          itemStyle: { color: '#38bdf8' },
+          areaStyle: { color: 'rgba(56, 189, 248, 0.1)' }
+        }, {
+          name: '错误', type: 'line', symbol: 'none',
+          data: recent.map(t => t.errors),
+          itemStyle: { color: '#ef4444' }
+        }]
+      };
+      opsChart.setOption(option);
+    }
+
+    function renderUserTable(users) {
+      const tbody = document.querySelector('#userTable tbody');
+      tbody.innerHTML = users.slice(0, 10).map(u => `
+        <tr>
+          <td>
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <div class="avatar">${u.nickname.slice(0, 1)}</div>
+              <div>
+                <div style="font-weight: 600;">${u.nickname}</div>
+                <div class="sub" style="font-size: 11px;">ID: ${u.id.slice(0, 8)}</div>
+              </div>
+            </div>
+          </td>
+          <td>
+            <div style="font-size: 13px;">${u.gender || '-'}/${u.age || '-'}</div>
+            <div class="sub" style="font-size: 11px;">${u.height || '-' }cm / ${u.weight || '-'}kg</div>
+          </td>
+          <td>
+            <span class="badge ${u.health_goal === 'maintain' ? 'badge-success' : 'badge-warning'}">${u.health_goal || '未知'}</span>
+          </td>
+          <td>
+            <div style="font-size: 13px;">${u.total_meals} 次用餐</div>
+            <div class="sub" style="font-size: 11px;">共 ${fmt(u.total_calories)} kcal</div>
+          </td>
+          <td>
+            <div class="sub">${u.last_active_at ? u.last_active_at.slice(5, 16).replace('T', ' ') : '从未活跃'}</div>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function renderGallery(images) {
+      const el = document.getElementById('recentGallery');
+      if (!images || !images.length) { el.innerHTML = '<p class="sub">暂无图片</p>'; return; }
+      el.innerHTML = images.map(img => {
+        let analysisHtml = '';
+        if (img.analysis && img.analysis.foods) {
+          const foods = img.analysis.foods.map(f => `<span class="analysis-tag">${f.name || f.dish_name || f.dish_name_cn}</span>`).join('');
+          const nutrition = img.analysis.nutrition ? 
+            `<div style="color:var(--muted);margin-top:4px;">P:${img.analysis.nutrition.protein || 0}g C:${img.analysis.nutrition.carbs || 0}g F:${img.analysis.nutrition.fat || 0}g</div>` : '';
+          analysisHtml = `<div class="analysis-overlay">
+            <div style="font-weight:700;margin-bottom:6px;color:var(--accent);">识别结果:</div>
+            <div>${foods}</div>
+            ${nutrition}
+          </div>`;
+        } else if (img.analysis && img.analysis.is_food === false) {
+          analysisHtml = `<div class="analysis-overlay"><div style="color:var(--danger);">检测为非食物</div></div>`;
+        }
+
+        const timeStr = img.captured_at ? img.captured_at.slice(11, 16) : '--:--';
+        return `
+          <div class="img-card">
+            <img src="${img.image_url}" alt="Meal" onerror="this.src='https://via.placeholder.com/150?text=Error'">
+            <div class="img-info">
+              <div>${timeStr} · ${img.label || '图片'}</div>
+              <div style="opacity: 0.6; font-size: 9px;">UID: ${img.user_id ? img.user_id.slice(0, 8) : '未知'}</div>
+            </div>
+            ${analysisHtml}
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function loadData() {
+      try {
+        const [overviewRes, trafficRes, trendsRes, usersRes, imagesRes] = await Promise.all([
+          fetch('/api/v1/admin/dashboard/overview'),
+          fetch('/api/v1/admin/dashboard/traffic'),
+          fetch('/api/v1/admin/dashboard/trends'),
+          fetch('/api/v1/admin/dashboard/users'),
+          fetch('/api/v1/admin/dashboard/recent-images?limit=12')
+        ]);
+
+        const overview = await overviewRes.json();
+        const traffic = await trafficRes.json();
+        const trends = await trendsRes.json();
+        const users = await usersRes.json();
+        const images = await imagesRes.json();
+
+        renderKpis(overview);
+        renderMainTrend(trends.trends);
+        renderOpsTrend(traffic.time_series);
+        renderUserTable(users.users);
+        renderGallery(images.images);
+
+        document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString();
+      } catch (err) {
+        console.error('Data load failed:', err);
+      }
+    }
+
+    window.onload = () => {
+      initCharts();
+      loadData();
+      setInterval(loadData, 60000);
+    };
+  </script>
+</body>
+</html>

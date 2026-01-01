@@ -1,0 +1,58 @@
+{
+  "snapshot_id": "demo_meal_start_001",
+  "session_id": "demo_session_001",
+  "raw_llm": {
+    "is_food": true,
+    "foods": [
+      {
+        "dish_name": "Steamed Rice",
+        "dish_name_cn": "米饭",
+        "cooking_method": "steamed",
+        "ingredients": [
+          {"name_en": "rice", "weight_g": 200, "confidence": 0.95}
+        ],
+        "total_weight_g": 200,
+        "confidence": 0.95,
+        "category": "meal"
+      },
+      {
+        "dish_name": "Braised Pork Belly",
+        "dish_name_cn": "红烧肉",
+        "cooking_method": "braised",
+        "ingredients": [
+          {"name_en": "pork belly", "weight_g": 120, "confidence": 0.92},
+          {"name_en": "soy sauce", "weight_g": 15, "confidence": 0.88},
+          {"name_en": "sugar", "weight_g": 10, "confidence": 0.85}
+        ],
+        "total_weight_g": 145,
+        "confidence": 0.90,
+        "category": "meal"
+      },
+      {
+        "dish_name": "Stir-fried Vegetables",
+        "dish_name_cn": "炒青菜",
+        "cooking_method": "stir-fried",
+        "ingredients": [
+          {"name_en": "bok choy", "weight_g": 100, "confidence": 0.93},
+          {"name_en": "garlic", "weight_g": 5, "confidence": 0.90},
+          {"name_en": "oil", "weight_g": 10, "confidence": 0.88}
+        ],
+        "total_weight_g": 115,
+        "confidence": 0.92,
+        "category": "meal"
+      }
+    ],
+    "suggestion": "这是一份营养均衡的中式午餐，包含主食、蛋白质和蔬菜。建议细嚼慢咽，用餐时间控制在15-20分钟。"
+  },
+  "snapshot": {
+    "foods": [],
+    "nutrition": {
+      "calories": 650,
+      "protein": 25,
+      "carbs": 80,
+      "fat": 28
+    },
+    "image_url": "https://viseat.cn/uploads/demo/meal_start.jpg"
+  },
+  "suggestion": "这是一份营养均衡的中式午餐，包含主食、蛋白质和蔬菜。建议细嚼慢咽，用餐时间控制在15-20分钟。"
+}

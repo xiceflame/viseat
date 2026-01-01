@@ -1,0 +1,43 @@
+{
+  "snapshot_id": "demo_meal_end_001",
+  "session_id": "demo_session_001",
+  "raw_llm": {
+    "is_food": true,
+    "foods": [
+      {
+        "dish_name": "Steamed Rice",
+        "dish_name_cn": "米饭",
+        "cooking_method": "steamed",
+        "ingredients": [
+          {"name_en": "rice", "weight_g": 15, "confidence": 0.88}
+        ],
+        "total_weight_g": 15,
+        "confidence": 0.85,
+        "category": "meal"
+      },
+      {
+        "dish_name": "Stir-fried Vegetables",
+        "dish_name_cn": "炒青菜",
+        "cooking_method": "stir-fried",
+        "ingredients": [
+          {"name_en": "bok choy", "weight_g": 10, "confidence": 0.85}
+        ],
+        "total_weight_g": 10,
+        "confidence": 0.82,
+        "category": "meal"
+      }
+    ],
+    "suggestion": "本餐已完成，消耗比例约92%。用餐时间适中，建议餐后适当活动促进消化。"
+  },
+  "snapshot": {
+    "foods": [],
+    "nutrition": {
+      "calories": 50,
+      "protein": 2,
+      "carbs": 8,
+      "fat": 1
+    },
+    "image_url": "https://viseat.cn/uploads/demo/meal_end.jpg"
+  },
+  "suggestion": "本餐已完成，消耗比例约92%。用餐时间适中，建议餐后适当活动促进消化。"
+}

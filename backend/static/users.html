@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VisEat - 用户管理面板</title>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    :root {
+      --bg: #0b0f1a;
+      --sidebar: #111827;
+      --card: #161e2e;
+      --card-hover: #1f2937;
+      --text: #f3f4f6;
+      --muted: #9ca3af;
+      --accent: #38bdf8;
+      --accent-glow: rgba(56, 189, 248, 0.2);
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --border: rgba(255, 255, 255, 0.05);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Inter", -apple-system, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    aside {
+      width: 240px;
+      background: var(--sidebar);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 24px 16px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 8px 32px;
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--accent);
+    }
+    nav { flex: 1; }
+    nav a {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      color: var(--muted);
+      text-decoration: none;
+      border-radius: 8px;
+      margin-bottom: 4px;
+      transition: all 0.2s;
+      font-size: 14px;
+    }
+    nav a:hover, nav a.active {
+      background: var(--card-hover);
+      color: var(--text);
+    }
+    nav a.active {
+      color: var(--accent);
+      background: var(--accent-glow);
+    }
+
+    main {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px 32px;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 32px;
+    }
+    .header-left h1 { margin: 0; font-size: 24px; font-weight: 700; }
+    .header-left p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+
+    .search-bar {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .search-input {
+      flex: 1;
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 16px;
+      border-radius: 8px;
+      outline: none;
+    }
+    .search-input:focus { border-color: var(--accent); }
+
+    .user-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--card);
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .user-table th {
+      background: rgba(255, 255, 255, 0.02);
+      text-align: left;
+      padding: 16px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+    .user-table td {
+      padding: 16px;
+      font-size: 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    .user-table tr:hover { background: var(--card-hover); }
+
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--accent-glow);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      color: var(--accent);
+      text-transform: uppercase;
+    }
+
+    .token-hover {
+      position: relative;
+      cursor: help;
+      border-bottom: 1px dashed var(--muted);
+    }
+    .token-tooltip {
+      visibility: hidden;
+      width: 140px;
+      background-color: var(--card-hover);
+      color: var(--text);
+      text-align: center;
+      border-radius: 6px;
+      padding: 8px;
+      position: absolute;
+      z-index: 1;
+      bottom: 125%;
+      left: 50%;
+      margin-left: -70px;
+      opacity: 0;
+      transition: opacity 0.3s;
+      border: 1px solid var(--border);
+      font-size: 11px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    }
+    .token-hover:hover .token-tooltip {
+      visibility: visible;
+      opacity: 1;
+    }
+
+    .status-pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .status-active { background: rgba(16, 185, 129, 0.1); color: var(--success); }
+    .status-inactive { background: rgba(239, 68, 68, 0.1); color: var(--danger); }
+
+    .stat-badge {
+      font-size: 12px;
+      padding: 2px 6px;
+      background: var(--border);
+      border-radius: 4px;
+      margin-right: 4px;
+    }
+
+    .pagination {
+      margin-top: 24px;
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+    }
+    .btn {
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .btn:hover { background: var(--card-hover); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+  <aside>
+    <div class="brand">
+      <i data-lucide="zap"></i>
+      <span>VisEat Admin</span>
+    </div>
+    <nav>
+      <a href="/dashboard"><i data-lucide="bar-chart-2"></i>概览监控</a>
+      <a href="/image-audit"><i data-lucide="image"></i>图片审查</a>
+      <a href="/users-admin" class="active"><i data-lucide="users"></i>用户管理</a>
+    </nav>
+  </aside>
+
+  <main>
+    <header>
+      <div class="header-left">
+        <h1>用户管理</h1>
+        <p>监控用户活跃度、健康指标及系统使用详情</p>
+      </div>
+    </header>
+
+    <div class="search-bar">
+      <input type="text" class="search-input" id="searchInput" placeholder="搜索用户 ID、昵称或设备 ID..." onkeyup="if(event.key==='Enter') loadUsers(0)">
+      <button class="btn" onclick="loadUsers(0)">搜索</button>
+    </div>
+
+    <table class="user-table">
+      <thead>
+        <tr>
+          <th>用户信息</th>
+          <th>身体指标 (BMI)</th>
+          <th>健康目标 / 偏好</th>
+          <th>注册 IP & 属地</th>
+          <th>活跃情况</th>
+          <th>API 使用 (周)</th>
+          <th>注册时间</th>
+        </tr>
+      </thead>
+      <tbody id="userTableBody">
+        <!-- Rows will be injected here -->
+      </tbody>
+    </table>
+
+    <div class="pagination">
+      <button class="btn" id="prevPage" onclick="changePage(-1)">上一页</button>
+      <span id="pageInfo" style="line-height: 36px;">第 1 页</span>
+      <button class="btn" id="nextPage" onclick="changePage(1)">下一页</button>
+    </div>
+  </main>
+
+  <script>
+    let currentSkip = 0;
+    const limit = 20;
+
+    async function loadUsers(skip) {
+      try {
+        const search = document.getElementById('searchInput').value;
+        const response = await fetch(`/api/v1/admin/users?limit=${limit}&skip=${skip}&search=${encodeURIComponent(search)}`);
+        const data = await response.json();
+        
+        const tbody = document.getElementById('userTableBody');
+        tbody.innerHTML = '';
+        
+        data.users.forEach(u => {
+          const row = document.createElement('tr');
+          
+          const nickname = u.nickname || '匿名用户';
+          const avatarLetter = nickname.charAt(0);
+          
+          const bmiColor = u.bmi >= 18.5 && u.bmi <= 24.9 ? 'var(--success)' : 'var(--warning)';
+          
+          // 处理偏好标签
+          const prefs = (u.dietary_preferences || []).concat(u.health_conditions || []);
+          const prefHtml = prefs.slice(0, 3).map(p => `<span class="stat-badge">${p}</span>`).join('');
+
+          row.innerHTML = `
+            <td>
+              <div class="user-info">
+                <div class="avatar">${avatarLetter}</div>
+                <div>
+                  <div style="font-weight:600">${nickname}</div>
+                  <div style="font-size:11px;color:var(--muted)">${u.user_id.substring(0,8)}...</div>
+                </div>
+              </div>
+            </td>
+            <td>
+              <div>${u.height || '-'}cm / ${u.weight || '-'}kg</div>
+              <div style="font-size:11px;color:${bmiColor}">BMI: ${u.bmi || '-'}</div>
+            </td>
+            <td>
+              <div style="font-size:13px">${translateGoal(u.health_goal)} | ${u.diet_type || '常规'}</div>
+              <div style="margin-top:4px">${prefHtml}${prefs.length > 3 ? '...' : ''}</div>
+            </td>
+            <td>
+              <div style="font-size:13px">${u.registration_location || '未知'}</div>
+              <div style="font-size:11px;color:var(--muted)">${u.registration_ip || '-'}</div>
+            </td>
+            <td>
+              <div style="font-size:13px">${u.total_active_days || 0} 天活跃</div>
+              <div style="font-size:11px;color:var(--muted)">最后在线: ${formatDate(u.last_active)}</div>
+            </td>
+            <td>
+              <div class="token-hover" style="display:inline-block">
+                <span style="font-weight:bold;color:var(--accent)">${u.week_api_calls || 0}</span>
+                <div class="token-tooltip">
+                  累计消耗 Token: <br/>
+                  <span style="color:var(--accent);font-size:14px;font-weight:bold">${u.total_tokens || 0}</span>
+                </div>
+              </div>
+              <div style="font-size:11px;color:var(--muted)">总用餐: ${u.total_meals || 0}</div>
+            </td>
+            <td style="font-size:12px;color:var(--muted)">
+              ${formatDate(u.created_at)}
+            </td>
+          `;
+          tbody.appendChild(row);
+        });
+
+        currentSkip = skip;
+        const page = Math.floor(skip / limit) + 1;
+        document.getElementById('pageInfo').innerText = `第 ${page} 页`;
+        document.getElementById('prevPage').disabled = skip === 0;
+        document.getElementById('nextPage').disabled = data.users.length < limit;
+
+      } catch (error) {
+        console.error('Failed to load users:', error);
+      }
+    }
+
+    function translateGoal(goal) {
+      const maps = {
+        'lose_weight': '减重',
+        'gain_muscle': '增肌',
+        'maintain': '维持',
+        'normal': '正常'
+      };
+      return maps[goal] || goal || '未设置';
+    }
+
+    function formatDate(isoStr) {
+      if (!isoStr) return '从不';
+      const d = new Date(isoStr);
+      return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    }
+
+    function changePage(delta) {
+      const newSkip = currentSkip + (delta * limit);
+      loadUsers(newSkip);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+      loadUsers(0);
+    });
+  </script>
+</body>
+</html>

@@ -18,6 +18,10 @@ backend/viseat.db
 .vscode/
 .idea/
 
+# Environment secrets
+.env
+backend/.env
+
 # Data & artifacts
 *.db
 *.sqlite3

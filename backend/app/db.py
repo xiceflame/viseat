@@ -21,4 +21,5 @@ def get_db():
 
 def init_db():
     from . import models  # noqa: F401  确保模型已导入
+    from . import models_extended  # noqa: F401  确保扩展模型已导入
     Base.metadata.create_all(bind=engine)

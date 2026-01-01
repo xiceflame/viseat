@@ -74,6 +74,10 @@ class User(Base):
     # 健康目标（对应前端 healthGoal）
     health_goal = Column(String, default="maintain")  # lose_weight/gain_muscle/maintain
     target_weight = Column(Float, nullable=True)  # 目标体重
+    target_date = Column(String, nullable=True)  # 目标日期 YYYY-MM-DD
+    
+    # 饮食类型（对应前端 dietType）
+    diet_type = Column(String, default="normal")  # normal/vegetarian/vegan/pescatarian/keto/low_carb
     
     # 每日营养目标（根据个人信息计算）
     target_calories = Column(Float, default=2000.0)
@@ -94,6 +98,11 @@ class User(Base):
     total_meals = Column(Integer, default=0)
     total_calories = Column(Float, default=0.0)
     total_days_active = Column(Integer, default=0)
+    total_tokens = Column(Integer, default=0)  # 累计 Token 消耗
+    
+    # 注册信息
+    registration_ip = Column(String, nullable=True)  # 注册 IP
+    registration_location = Column(String, nullable=True)  # IP 属地
     
     # 时间戳
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -159,12 +168,15 @@ class User(Base):
             "nickname": self.nickname,
             "gender": self.gender,
             "age": self.age,
+            "birth_year": self.birth_year,
             "height": self.height_cm,
             "weight": self.weight_kg,
             "bmi": self.bmi,
             "activity_level": self.activity_level,
             "health_goal": self.health_goal,
             "target_weight": self.target_weight,
+            "target_date": self.target_date,
+            "diet_type": self.diet_type,
             "target_calories": self.target_calories,
             "target_protein": self.target_protein,
             "target_carbs": self.target_carbs,
@@ -174,8 +186,12 @@ class User(Base):
             "allergies": self.allergies or [],
             "total_meals": self.total_meals,
             "total_calories": self.total_calories,
+            "total_tokens": self.total_tokens,
+            "registration_ip": self.registration_ip,
+            "registration_location": self.registration_location,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "last_active": self.last_active_at.isoformat() if self.last_active_at else None,
         }
 
 
@@ -412,9 +428,45 @@ class ApiLog(Base):
     # 业务数据（脱敏）
     food_count = Column(Integer, nullable=True)
     total_calories = Column(Float, nullable=True)
+    tokens = Column(Integer, nullable=True)  # 本次调用消耗的 Token
     
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     
     __table_args__ = (
         Index('idx_api_logs_user_date', 'user_id', 'created_at'),
+    )
+
+
+# ==================== 个性化建议 ====================
+
+class PersonalizedTip(Base):
+    """个性化健康建议 - 基于用户画像和饮食历史生成"""
+    __tablename__ = "personalized_tips"
+
+    id = Column(String, primary_key=True, index=True)
+    user_id = Column(String, ForeignKey("users.id"), index=True, nullable=False)
+    
+    # 建议内容
+    content = Column(Text, nullable=False)  # 建议文本
+    category = Column(String, default="nutrition")  # nutrition/timing/habit/warning/encouragement
+    priority = Column(Integer, default=5)  # 1-10, 1最高
+    
+    # 有效期
+    valid_until = Column(DateTime, nullable=False)  # 建议过期时间
+    
+    # 生成上下文
+    trigger = Column(String, nullable=True)  # meal_ended/daily_refresh/manual
+    context_data = Column(JSON, nullable=True)  # 生成时的数据摘要
+    
+    # 状态
+    is_read = Column(Boolean, default=False)  # 是否已读
+    is_dismissed = Column(Boolean, default=False)  # 是否已忽略
+    
+    # 用户反馈
+    is_helpful = Column(Boolean, nullable=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    __table_args__ = (
+        Index('idx_tips_user_valid', 'user_id', 'valid_until'),
     )

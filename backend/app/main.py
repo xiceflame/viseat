@@ -1,14 +1,21 @@
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+import secrets
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
+import time
 import shutil
+from collections import defaultdict
 from dotenv import load_dotenv
 from sqlalchemy.orm import Session
+from sqlalchemy import func, case
 from pathlib import Path
 import csv
 import logging
+from threading import Lock
 import uuid
 from typing import Optional, List, Dict, Any
 import requests
@@ -31,6 +38,9 @@ logger = logging.getLogger(__name__)
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
+# 静态文件目录
+STATIC_DIR = Path(__file__).parent.resolve()
+
 # 创建FastAPI应用
 app = FastAPI(
     title="Rokid Nutrition API",
@@ -38,13 +48,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# 挂载静态文件目录，用于访问上传的图片
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
-
-from .db import get_db, init_db
-from . import models
-
-# 配置CORS
+# 配置CORS（允许跨域请求）
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # 生产环境应该限制具体域名
@@ -52,6 +56,170 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 挂载静态文件目录
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+app.mount("/static", StaticFiles(directory=STATIC_DIR.parent / "static"), name="static")
+
+from .db import get_db, init_db
+from . import models
+
+# 管理后台鉴权配置
+_ADMIN_USERNAME = os.getenv("DASHBOARD_ADMIN_USERNAME", "admin")
+_ADMIN_PASSWORD = os.getenv("DASHBOARD_ADMIN_PASSWORD", "admin123")
+_admin_basic = HTTPBasic()
+
+
+def require_admin(credentials: Optional[HTTPBasicCredentials] = Depends(_admin_basic)) -> str:
+    if not _ADMIN_USERNAME or not _ADMIN_PASSWORD:
+        raise HTTPException(status_code=500, detail="Admin authentication is not configured")
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="Unauthorized", headers={"WWW-Authenticate": "Basic"})
+    is_valid_username = secrets.compare_digest(credentials.username, _ADMIN_USERNAME)
+    is_valid_password = secrets.compare_digest(credentials.password, _ADMIN_PASSWORD)
+    if not (is_valid_username and is_valid_password):
+        raise HTTPException(status_code=401, detail="Unauthorized", headers={"WWW-Authenticate": "Basic"})
+    return credentials.username
+
+
+# 指标统计锁和数据结构
+_METRICS_LOCK = Lock()
+_METRICS_REQUESTS_TOTAL = defaultdict(int)
+_METRICS_DURATION_MS_SUM = defaultdict(float)
+_METRICS_DURATION_MS_COUNT = defaultdict(int)
+
+# 数据库会话工厂
+from .db import SessionLocal
+
+def _status_class(status_code: int) -> str:
+    try:
+        return f"{int(status_code) // 100}xx"
+    except Exception:
+        return "unknown"
+
+def _group_from_endpoint(endpoint: str) -> str:
+    if not endpoint:
+        return "unknown"
+    path = endpoint.split("?", 1)[0].strip()
+    parts = [p for p in path.split("/") if p]
+    if len(parts) >= 3 and parts[0] == "api" and parts[1].startswith("v"):
+        return parts[2]
+    if parts:
+        return parts[0]
+    return "unknown"
+
+
+@app.middleware("http")
+async def api_log_middleware(request: Request, call_next):
+    path = request.url.path
+    if not path.startswith("/api/"):
+        return await call_next(request)
+
+    start = time.perf_counter()
+    request_size = 0
+    content_length = request.headers.get("content-length")
+    if content_length and content_length.isdigit():
+        request_size = int(content_length)
+
+    user_id = request.query_params.get("user_id")
+    device_id = request.query_params.get("device_id")
+    session_id = request.query_params.get("session_id") or request.query_params.get("meal_session_id")
+
+    food_count: Optional[int] = None
+    total_calories: Optional[float] = None
+    error_message: Optional[str] = None
+
+    body_obj: Optional[Any] = None
+    content_type = request.headers.get("content-type") or ""
+    if content_type.startswith("application/json"):
+        try:
+            body_bytes = await request.body()
+            if body_bytes:
+                if request_size <= 0:
+                    request_size = len(body_bytes)
+                body_obj = json.loads(body_bytes.decode("utf-8"))
+        except Exception:
+            body_obj = None
+
+    if isinstance(body_obj, dict):
+        user_id = user_id or body_obj.get("user_id")
+        device_id = device_id or body_obj.get("device_id")
+        session_id = session_id or body_obj.get("session_id") or body_obj.get("meal_session_id")
+
+        for k in ("foods", "food_list", "baseline_foods"):
+            v = body_obj.get(k)
+            if isinstance(v, list):
+                food_count = len(v)
+                break
+
+        v_cal = body_obj.get("total_calories")
+        if isinstance(v_cal, (int, float)):
+            total_calories = float(v_cal)
+
+        nutrition = body_obj.get("nutrition")
+        if total_calories is None and isinstance(nutrition, dict):
+            v_cal2 = nutrition.get("calories")
+            if isinstance(v_cal2, (int, float)):
+                total_calories = float(v_cal2)
+
+    status_code = 500
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        return response
+    except Exception as e:
+        error_message = str(e)
+        raise
+    finally:
+        duration_ms = int((time.perf_counter() - start) * 1000)
+
+        group = _group_from_endpoint(path)
+        status_cls = _status_class(status_code)
+        with _METRICS_LOCK:
+            _METRICS_REQUESTS_TOTAL[(group, request.method, status_cls)] += 1
+            _METRICS_DURATION_MS_SUM[(group, request.method)] += duration_ms
+            _METRICS_DURATION_MS_COUNT[(group, request.method)] += 1
+
+        db = None
+        try:
+            db = SessionLocal()
+            
+            # 获取 Token 消耗（如果有）
+            tokens = None
+            if hasattr(request.state, "token_usage"):
+                tokens = request.state.token_usage.get("total_tokens")
+
+            log = models.ApiLog(
+                id=str(uuid.uuid4()),
+                user_id=user_id,
+                device_id=device_id,
+                session_id=session_id,
+                endpoint=path,
+                method=request.method,
+                request_size=request_size,
+                status_code=status_code,
+                response_time_ms=duration_ms,
+                food_count=food_count,
+                total_calories=total_calories,
+                error_message=error_message,
+                tokens=tokens
+            )
+            db.add(log)
+            
+            # 更新用户累计数据
+            if user_id:
+                update_data = {"last_active_at": datetime.utcnow()}
+                if tokens:
+                    update_data["total_tokens"] = models.User.total_tokens + tokens
+                
+                db.query(models.User).filter(models.User.id == user_id).update(update_data)
+
+            db.commit()
+        except Exception as e:
+            logger.warning(f"ApiLog 写入失败: {e}")
+        finally:
+            if db:
+                db.close()
 
 # 外部服务配置
 OPEN_FOOD_FACTS_BASE_URL = os.getenv("OPEN_FOOD_FACTS_BASE_URL", "https://world.openfoodfacts.org")
@@ -433,6 +601,23 @@ class VisionAnalyzeRequest(BaseModel):
     reference_image_url: Optional[str] = None  # 参考图片URL（双图对比模式）
 
 
+def record_token_usage(request: Request, usage: Dict[str, Any]):
+    """记录 Token 使用量到 request.state，支持累加"""
+    if not hasattr(request.state, "token_usage"):
+        request.state.token_usage = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "model": usage.get("model")
+        }
+    
+    current = request.state.token_usage
+    current["prompt_tokens"] += usage.get("prompt_tokens", 0)
+    current["completion_tokens"] += usage.get("completion_tokens", 0)
+    current["total_tokens"] += usage.get("total_tokens", usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0))
+    if usage.get("model"):
+        current["model"] = usage.get("model")
+
 def _food_input_to_dict(food: FoodInput) -> Dict[str, Any]:
     return {
         "name": food.name,
@@ -448,9 +633,9 @@ def _food_input_to_dict(food: FoodInput) -> Dict[str, Any]:
     }
 
 
-def _calc_food_calories(food: FoodInput) -> float:
+def _calc_food_calories(food: FoodInput, request: Optional[Request] = None) -> float:
     data = _food_input_to_dict(food)
-    totals = calculate_nutrition([data])
+    totals = calculate_nutrition([data], request=request)
     return totals["calories"]
 
  
@@ -458,13 +643,8 @@ def _calc_food_calories(food: FoodInput) -> float:
 
 @app.get("/")
 async def root():
-    """根路径"""
-    return {
-        "service": "Rokid Nutrition API",
-        "status": "running",
-        "version": "1.0.0",
-        "timestamp": datetime.now().isoformat()
-    }
+    """根路径 - 返回官网首页"""
+    return FileResponse(STATIC_DIR.parent / "static" / "index.html")
 
 
 @app.get("/health")
@@ -477,18 +657,183 @@ async def health_check():
     }
 
 
+# ==================== 食物营养查询 API ====================
+
+class FoodNutritionRequest(BaseModel):
+    """食物营养查询请求"""
+    food_name: str
+    weight_g: float = 100.0
+
+
+class FoodNutritionResponse(BaseModel):
+    """食物营养查询响应"""
+    food_name: str
+    weight_g: float
+    calories: float
+    protein: float
+    carbs: float
+    fat: float
+    category: str
+    confidence: float
+    source: str
+
+
+@app.post("/api/v1/food/nutrition")
+async def get_food_nutrition(req: FoodNutritionRequest):
+    """
+    食物营养查询接口
+    
+    根据食物名称和重量，返回营养成分数据。
+    
+    数据来源优先级：
+    1. 预定义映射表 (324种常见食材)
+    2. 中国食物成分表 (1838种)
+    3. USDA Foundation Foods (3349种)
+    4. 分类默认估算值
+    
+    Args:
+        food_name: 食物名称（支持中英文）
+        weight_g: 重量（克），默认100g
+    
+    Returns:
+        calories: 热量 (kcal)
+        protein: 蛋白质 (g)
+        carbs: 碳水化合物 (g)
+        fat: 脂肪 (g)
+        category: 食物分类 (meal/snack/beverage/dessert/fruit)
+        confidence: 置信度 (0-1)
+        source: 数据来源
+    """
+    mapper = get_food_mapper()
+    category = "meal"
+    
+    # 计算营养数据
+    nutrition = mapper.calculate_nutrition(req.food_name, req.weight_g, category)
+    
+    # 尝试从营养数据库获取来源信息
+    nutrition_db = get_nutrition_db()
+    db_result, exact_match = nutrition_db.lookup(req.food_name)
+    source = db_result.source.value if db_result else "estimated"
+    
+    return {
+        "food_name": req.food_name,
+        "weight_g": req.weight_g,
+        "calories": round(nutrition.get("calories", 0), 1),
+        "protein": round(nutrition.get("protein", 0), 1),
+        "carbs": round(nutrition.get("carbs", 0), 1),
+        "fat": round(nutrition.get("fat", 0), 1),
+        "category": category,
+        "confidence": nutrition.get("confidence", 0.8),
+        "source": source
+    }
+
+
+@app.get("/api/v1/food/nutrition/{food_name}")
+async def get_food_nutrition_simple(food_name: str, weight_g: float = 100.0):
+    """
+    食物营养查询接口（GET 简易版）
+    
+    Example: GET /api/v1/food/nutrition/米饭?weight_g=150
+    """
+    mapper = get_food_mapper()
+    nutrition = mapper.calculate_nutrition(food_name, weight_g, "meal")
+    
+    # 获取数据来源
+    nutrition_db = get_nutrition_db()
+    db_result, exact_match = nutrition_db.lookup(food_name)
+    source = db_result.source.value if db_result else "estimated"
+    
+    return {
+        "food_name": food_name,
+        "weight_g": weight_g,
+        "calories": round(nutrition.get("calories", 0), 1),
+        "protein": round(nutrition.get("protein", 0), 1),
+        "carbs": round(nutrition.get("carbs", 0), 1),
+        "fat": round(nutrition.get("fat", 0), 1),
+        "category": "meal",
+        "confidence": nutrition.get("confidence", 0.8),
+        "source": source
+    }
+
+
+@app.get("/api/v1/food/search")
+async def search_foods(q: str, limit: int = 10):
+    """
+    食物搜索接口
+    
+    根据关键词搜索食物，返回匹配的食物列表。
+    
+    Example: GET /api/v1/food/search?q=牛肉&limit=5
+    """
+    nutrition_db = get_nutrition_db()
+    results = []
+    
+    # 搜索中文名
+    for name in nutrition_db._standard_names_cn:
+        if q.lower() in name.lower():
+            nutrition, _ = nutrition_db.lookup(name)
+            if nutrition:
+                results.append({
+                    "name": name,
+                    "name_cn": name,
+                    "calories_per_100g": nutrition.energy_kcal,
+                    "protein_per_100g": nutrition.protein,
+                    "source": nutrition.source.value if nutrition.source else "unknown"
+                })
+                if len(results) >= limit:
+                    break
+    
+    # 如果中文结果不够，搜索英文名
+    if len(results) < limit:
+        for name in nutrition_db._standard_names_en:
+            if q.lower() in name.lower():
+                nutrition, _ = nutrition_db.lookup(name)
+                if nutrition:
+                    results.append({
+                        "name": name,
+                        "name_en": name,
+                        "calories_per_100g": nutrition.energy_kcal,
+                        "protein_per_100g": nutrition.protein,
+                        "source": nutrition.source.value if nutrition.source else "unknown"
+                    })
+                    if len(results) >= limit:
+                        break
+    
+    return {
+        "query": q,
+        "count": len(results),
+        "results": results
+    }
+
+
 # ==================== 用户注册 API ====================
 
 class UserRegisterRequest(BaseModel):
-    """用户注册请求"""
+    """用户注册请求 - 支持在注册时直接传入基本信息"""
     device_id: str
     device_type: str = "phone"  # phone/glasses
     device_model: Optional[str] = None
     app_version: Optional[str] = None
+    
+    # 可选的初始档案信息
+    nickname: Optional[str] = None
+    gender: Optional[str] = None
+    age: Optional[int] = None
+    birth_year: Optional[int] = None  # 出生年份
+    height: Optional[float] = None  # 身高 cm
+    weight: Optional[float] = None  # 体重 kg
+    activity_level: Optional[str] = None  # sedentary/light/moderate/active/very_active
+    health_goal: Optional[str] = None  # lose_weight/gain_muscle/maintain
+    target_weight: Optional[float] = None  # 目标体重
+    target_date: Optional[str] = None  # 目标日期 YYYY-MM-DD
+    diet_type: Optional[str] = None  # 饮食类型 normal/vegetarian/vegan/pescatarian/keto/low_carb
+    health_conditions: Optional[List[str]] = None  # 健康状况 ["diabetes", "hypertension", "hyperlipidemia", "gout"]
+    dietary_preferences: Optional[List[str]] = None  # 饮食偏好 ["low_oil", "low_salt", "low_sugar"]
+    allergies: Optional[List[str]] = None  # 过敏原 ["peanut", "seafood", "dairy", "gluten", "egg"]
 
 
 @app.post("/api/v1/user/register")
-async def register_user(req: UserRegisterRequest, db: Session = Depends(get_db)):
+async def register_user(req: UserRegisterRequest, request: Request, db: Session = Depends(get_db)):
     """
     用户注册/登录接口
     
@@ -521,14 +866,52 @@ async def register_user(req: UserRegisterRequest, db: Session = Depends(get_db))
                 "message": "登录成功"
             }
         
+        # 获取注册 IP 和 属地
+        client_ip = request.client.host if request.client else None
+        location = "未知"
+        if client_ip and client_ip != "127.0.0.1":
+            try:
+                resp = requests.get(f"http://ip-api.com/json/{client_ip}?lang=zh-CN", timeout=2)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data.get("status") == "success":
+                        location = f"{data.get('regionName', '')} {data.get('city', '')}".strip()
+            except Exception as e:
+                logger.warning(f"获取 IP 属地失败: {e}")
+
         # 创建新用户
         user_id = str(uuid.uuid4())
         new_user = models.User(
             id=user_id,
             device_id=req.device_id,
+            # 基本信息
+            nickname=req.nickname,
+            gender=req.gender,
+            age=req.age,
+            birth_year=req.birth_year,
+            height_cm=req.height,
+            weight_kg=req.weight,
+            # 活动与目标
+            activity_level=req.activity_level or "moderate",
+            health_goal=req.health_goal or "maintain",
+            target_weight=req.target_weight,
+            target_date=req.target_date,
+            diet_type=req.diet_type or "normal",
+            health_conditions=req.health_conditions,
+            dietary_preferences=req.dietary_preferences,
+            allergies=req.allergies,
+            registration_ip=client_ip,
+            registration_location=location,
             created_at=datetime.utcnow(),
             last_active_at=datetime.utcnow()
         )
+        
+        # 初始计算 BMI 和目标
+        if new_user.height_cm and new_user.weight_kg:
+            new_user.calculate_bmi()
+        if any([new_user.age, new_user.gender, new_user.height_cm, new_user.weight_kg]):
+            new_user.calculate_target_calories()
+            
         db.add(new_user)
         
         # 注册设备
@@ -564,18 +947,82 @@ async def register_user(req: UserRegisterRequest, db: Session = Depends(get_db))
 # ==================== 用户档案 API ====================
 
 class UserProfileUpdate(BaseModel):
-    """用户档案更新请求 - 对应前端 UserProfile"""
+    """用户档案更新请求 - 支持 snake_case 和 camelCase"""
     nickname: Optional[str] = None
-    gender: Optional[str] = None  # male/female/other
+    avatar_url: Optional[str] = None
+    gender: Optional[str] = None
     age: Optional[int] = None
-    height: Optional[float] = None  # cm
-    weight: Optional[float] = None  # kg
+    birth_year: Optional[int] = None  # 出生年份
+    height: Optional[float] = None  # 身高 cm
+    weight: Optional[float] = None  # 体重 kg
     activity_level: Optional[str] = None  # sedentary/light/moderate/active/very_active
+    activityLevel: Optional[str] = None
     health_goal: Optional[str] = None  # lose_weight/gain_muscle/maintain
-    target_weight: Optional[float] = None
-    health_conditions: Optional[List[str]] = None  # ["diabetes", "hypertension"]
-    dietary_preferences: Optional[List[str]] = None  # ["low_oil", "low_salt", "vegetarian"]
-    allergies: Optional[List[str]] = None  # ["peanut", "seafood"]
+    healthGoal: Optional[str] = None
+    target_weight: Optional[float] = None  # 目标体重
+    targetWeight: Optional[float] = None
+    target_date: Optional[str] = None  # 目标日期 YYYY-MM-DD
+    targetDate: Optional[str] = None
+    diet_type: Optional[str] = None  # 饮食类型 normal/vegetarian/vegan/pescatarian/keto/low_carb
+    dietType: Optional[str] = None
+    health_conditions: Optional[List[str]] = None  # 健康状况 ["diabetes", "hypertension", "hyperlipidemia", "gout"]
+    healthConditions: Optional[List[str]] = None
+    dietary_preferences: Optional[List[str]] = None  # 饮食偏好 ["low_oil", "low_salt", "low_sugar"]
+    dietaryPreferences: Optional[List[str]] = None
+    allergies: Optional[List[str]] = None  # 过敏原 ["peanut", "seafood", "dairy", "gluten", "egg"]
+
+    class Config:
+        populate_by_name = True
+
+
+def calculate_profile_completeness(user: models.User) -> dict:
+    """计算用户画像完整度"""
+    # 核心字段（必填）
+    core_fields = {
+        "gender": user.gender,
+        "age": user.age,
+        "height": user.height_cm,
+        "weight": user.weight_kg,
+        "activity_level": user.activity_level,
+        "health_goal": user.health_goal,
+    }
+    
+    # 可选字段
+    optional_fields = {
+        "nickname": user.nickname,
+        "birth_year": user.birth_year,
+        "target_weight": user.target_weight,
+        "target_date": user.target_date,
+        "diet_type": user.diet_type,
+        "health_conditions": user.health_conditions,
+        "dietary_preferences": user.dietary_preferences,
+        "allergies": user.allergies,
+    }
+    
+    # 计算完整度
+    core_filled = sum(1 for v in core_fields.values() if v is not None)
+    optional_filled = sum(1 for v in optional_fields.values() if v is not None and v != [] and v != "")
+    
+    core_total = len(core_fields)
+    optional_total = len(optional_fields)
+    
+    # 核心字段权重 80%，可选字段权重 20%
+    core_score = (core_filled / core_total) * 80 if core_total > 0 else 0
+    optional_score = (optional_filled / optional_total) * 20 if optional_total > 0 else 0
+    total_score = round(core_score + optional_score)
+    
+    # 找出缺失的核心字段
+    missing_core = [k for k, v in core_fields.items() if v is None]
+    
+    return {
+        "completeness": total_score,
+        "core_filled": core_filled,
+        "core_total": core_total,
+        "optional_filled": optional_filled,
+        "optional_total": optional_total,
+        "missing_core_fields": missing_core,
+        "is_complete": core_filled == core_total  # 核心字段全部填写即为完整
+    }
 
 
 @app.get("/api/v1/user/profile")
@@ -602,9 +1049,13 @@ async def get_user_profile(
         if not user:
             raise HTTPException(status_code=404, detail="用户不存在")
         
+        # 计算完整度
+        completeness = calculate_profile_completeness(user)
+        
         return {
             "success": True,
-            "profile": user.to_profile_dict()
+            "profile": user.to_profile_dict(),
+            "completeness": completeness
         }
         
     except HTTPException:
@@ -641,13 +1092,23 @@ async def update_user_profile(
         # 更新字段
         update_data = profile.dict(exclude_unset=True)
         
-        # 字段映射（前端字段 -> 数据库字段）
+        # 字段映射（处理前端不同的命名风格）
         field_mapping = {
             "height": "height_cm",
-            "weight": "weight_kg"
+            "weight": "weight_kg",
+            "birthYear": "birth_year",
+            "activityLevel": "activity_level",
+            "healthGoal": "health_goal",
+            "targetWeight": "target_weight",
+            "targetDate": "target_date",
+            "dietType": "diet_type",
+            "healthConditions": "health_conditions",
+            "dietaryPreferences": "dietary_preferences"
         }
         
         for key, value in update_data.items():
+            if value is None:
+                continue
             db_field = field_mapping.get(key, key)
             if hasattr(user, db_field):
                 setattr(user, db_field, value)
@@ -705,11 +1166,24 @@ async def sync_user_profile(
         
         # 更新字段
         update_data = profile.dict(exclude_unset=True)
-        field_mapping = {"height": "height_cm", "weight": "weight_kg"}
+        field_mapping = {
+            "height": "height_cm", 
+            "weight": "weight_kg",
+            "birthYear": "birth_year",
+            "activityLevel": "activity_level",
+            "healthGoal": "health_goal",
+            "targetWeight": "target_weight",
+            "targetDate": "target_date",
+            "dietType": "diet_type",
+            "healthConditions": "health_conditions",
+            "dietaryPreferences": "dietary_preferences"
+        }
         
         for key, value in update_data.items():
+            if value is None:
+                continue
             db_field = field_mapping.get(key, key)
-            if hasattr(user, db_field) and value is not None:
+            if hasattr(user, db_field):
                 setattr(user, db_field, value)
         
         # 自动计算
@@ -734,6 +1208,107 @@ async def sync_user_profile(
         logger.error(f"同步用户档案失败: {e}", exc_info=True)
         db.rollback()
         raise HTTPException(status_code=500, detail=f"同步失败: {str(e)}")
+
+
+@app.get("/api/v1/food/search")
+async def search_food(
+    q: str = Query(..., description="搜索关键词"),
+    limit: int = 20,
+    db: Session = Depends(get_db)
+):
+    """搜索食物数据库"""
+    try:
+        results = []
+        # 1. 搜索内置简单数据库
+        for name, info in NUTRITION_DB.items():
+            if q in name:
+                results.append({
+                    "name": name,
+                    "source": "internal",
+                    **info
+                })
+        
+        # 2. 搜索扩展数据库
+        for name, info in NUTRITION_DB_EXT.items():
+            if q in name and len(results) < limit:
+                results.append({
+                    "name": name,
+                    "source": "external",
+                    **info
+                })
+        
+        # 3. 搜索多数据源高级数据库
+        advanced_db = get_nutrition_db()
+        advanced_results = advanced_db.search_foods(q, limit=limit)
+        for r in advanced_results:
+            # 避免重复
+            if not any(res["name"] == r["name"] for res in results):
+                results.append(r)
+        
+        return {
+            "success": True,
+            "query": q,
+            "count": len(results),
+            "results": results[:limit]
+        }
+    except Exception as e:
+        logger.error(f"食物搜索失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="搜索失败")
+
+
+@app.get("/api/v1/user/{user_id}/personalized-tips")
+async def get_personalized_tips(
+    user_id: str,
+    limit: int = 5,
+    db: Session = Depends(get_db)
+):
+    """获取用户个性化健康建议"""
+    try:
+        # 查询数据库中的建议
+        tips = db.query(models.PersonalizedTip).filter(
+            models.PersonalizedTip.user_id == user_id,
+            models.PersonalizedTip.valid_until >= datetime.utcnow(),
+            models.PersonalizedTip.is_dismissed == False
+        ).order_by(models.PersonalizedTip.priority.asc(), models.PersonalizedTip.created_at.desc()).limit(limit).all()
+        
+        if not tips:
+            # 如果没有建议，可以触发一次简单生成（这里仅返回默认建议）
+            return {
+                "success": True,
+                "user_id": user_id,
+                "tips": [
+                    {
+                        "id": "default_1",
+                        "content": "多喝水，保持身体水分充足。",
+                        "category": "habit",
+                        "priority": 5
+                    },
+                    {
+                        "id": "default_2",
+                        "content": "建议每餐加入适量优质蛋白质。",
+                        "category": "nutrition",
+                        "priority": 5
+                    }
+                ]
+            }
+            
+        return {
+            "success": True,
+            "user_id": user_id,
+            "tips": [
+                {
+                    "id": tip.id,
+                    "content": tip.content,
+                    "category": tip.category,
+                    "priority": tip.priority,
+                    "is_read": tip.is_read,
+                    "created_at": tip.created_at.isoformat()
+                } for tip in tips
+            ]
+        }
+    except Exception as e:
+        logger.error(f"获取个性化建议失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="获取建议失败")
 
 
 @app.get("/api/v1/user/{user_id}/stats")
@@ -825,15 +1400,15 @@ async def upload_image(file: UploadFile = File(...)):
 
 
 @app.post("/api/v1/nutrition/aggregate")
-async def aggregate_nutrition(payload: SnapshotPayload):
+async def aggregate_nutrition(payload: SnapshotPayload, request: Request):
     """根据食物列表聚合营养成分"""
     try:
         foods_payload = [_food_input_to_dict(f) for f in payload.foods]
-        totals = calculate_nutrition(foods_payload)
+        totals = calculate_nutrition(foods_payload, request=request)
 
         enriched = []
         for f in payload.foods:
-            item_total = calculate_nutrition([_food_input_to_dict(f)])
+            item_total = calculate_nutrition([_food_input_to_dict(f)], request=request)
             weight = f.weight_g
             if weight > 0:
                 ratio = weight / 100.0
@@ -866,13 +1441,14 @@ async def aggregate_nutrition(payload: SnapshotPayload):
         raise HTTPException(status_code=500, detail="营养聚合计算失败")
 
 
-def ask_vlm_for_nutrition(name: str, weight_g: float) -> dict:
+def ask_vlm_for_nutrition(name: str, weight_g: float, request: Optional[Request] = None) -> dict:
     """
     让 VLM 估算单个食材的营养成分（当数据库查不到时使用）
     
     Args:
         name: 食材名称
         weight_g: 重量（克）
+        request: FastAPI 请求对象，用于记录 Token
         
     Returns:
         营养成分字典 {"calories": x, "protein": x, "carbs": x, "fat": x}
@@ -890,6 +1466,15 @@ def ask_vlm_for_nutrition(name: str, weight_g: float) -> dict:
             max_tokens=100,
         )
         
+        # 记录 Token 使用
+        if request and hasattr(resp, "usage") and resp.usage:
+             record_token_usage(request, {
+                 "prompt_tokens": resp.usage.prompt_tokens,
+                 "completion_tokens": resp.usage.completion_tokens,
+                 "total_tokens": resp.usage.total_tokens,
+                 "model": QWEN_TEXT_MODEL
+             })
+
         import re
         text = resp.choices[0].message.content
         # 提取 JSON
@@ -909,13 +1494,14 @@ def ask_vlm_for_nutrition(name: str, weight_g: float) -> dict:
     return {"calories": weight_g, "protein": weight_g * 0.05, "carbs": weight_g * 0.15, "fat": weight_g * 0.03}
 
 
-def calculate_nutrition(foods: list, use_vlm_fallback: bool = True) -> dict:
+def calculate_nutrition(foods: list, use_vlm_fallback: bool = True, request: Optional[Request] = None) -> dict:
     """
     计算食物的总营养成分
     
     Args:
         foods: 食物列表，每个食物包含name和weight
         use_vlm_fallback: 数据库查不到时是否用 VLM 估算
+        request: FastAPI 请求对象
         
     Returns:
         总营养成分字典
@@ -967,7 +1553,7 @@ def calculate_nutrition(foods: list, use_vlm_fallback: bool = True) -> dict:
         if is_fallback and use_vlm_fallback and weight > 0:
             # 数据库查不到，用 VLM 估算
             logger.info(f"食材 '{name}' 未在数据库中找到，使用 VLM 估算")
-            vlm_data = ask_vlm_for_nutrition(name, weight)
+            vlm_data = ask_vlm_for_nutrition(name, weight, request)
             total['calories'] += round(vlm_data['calories'], 1)
             total['protein'] += round(vlm_data['protein'], 1)
             total['carbs'] += round(vlm_data['carbs'], 1)
@@ -1069,7 +1655,7 @@ async def get_nutrition_by_barcode(barcode: str):
 
 
 @app.post("/api/v1/vision/analyze")
-async def vision_analyze(req: VisionAnalyzeRequest):
+async def vision_analyze(req: VisionAnalyzeRequest, request: Request):
     """调用 Qwen-VL 对餐盘图片进行多食材拆解，并返回营养快照。
 
     模式：
@@ -1248,6 +1834,16 @@ async def vision_analyze(req: VisionAnalyzeRequest):
         logger.error(f"调用 Qwen-VL 失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"调用 Qwen-VL 失败: {str(e)}")
 
+    # 提取 Token 使用量
+    if hasattr(completion, 'usage') and completion.usage:
+        record_token_usage(request, {
+            "prompt_tokens": completion.usage.prompt_tokens,
+            "completion_tokens": completion.usage.completion_tokens,
+            "total_tokens": completion.usage.total_tokens,
+            "model": QWEN_VL_MODEL
+        })
+        logger.info(f"VLM Token 使用: prompt={completion.usage.prompt_tokens}, completion={completion.usage.completion_tokens}, total={completion.usage.total_tokens}")
+
     # 提取文本内容
     try:
         message = completion.choices[0].message
@@ -1328,7 +1924,7 @@ async def vision_analyze(req: VisionAnalyzeRequest):
             }
         
         foods_payload = [_food_input_to_dict(f) for f in food_inputs]
-        totals = calculate_nutrition(foods_payload)
+        totals = calculate_nutrition(foods_payload, request=request)
         
         return {
             "raw_llm": llm_json,
@@ -1650,14 +2246,14 @@ async def analyze_meal_update(req: MealUpdateRequest):
     }
 
 
-# ==================== 用餐会话管理API ====================
 
 @app.post("/api/v1/meal/start")
 async def start_meal_session(
     snapshot: SnapshotPayload,
+    request: Request,
     user_id: str = "default_user",
     meal_type: str = "lunch",
-    auto_interval: int = 300,
+    auto_interval: int = 60,
     db: Session = Depends(get_db)
 ):
     """
@@ -1683,7 +2279,7 @@ async def start_meal_session(
                 "fat": snapshot.nutrition.fat,
             }
         else:
-            totals = calculate_nutrition(foods_payload)
+            totals = calculate_nutrition(foods_payload, request=request)
 
         db_session = models.MealSession(
             id=session_id,
@@ -1711,7 +2307,7 @@ async def start_meal_session(
         db.add(db_snapshot)
 
         for f in snapshot.foods:
-            cal = _calc_food_calories(f)
+            cal = _calc_food_calories(f, request=request)
             db.add(models.SnapshotFood(
                 id=str(uuid.uuid4()),
                 snapshot_id=snapshot_id,
@@ -1877,6 +2473,7 @@ def calculate_dynamic_stats(session_id: str, db: Session):
 async def update_meal_session(
     session_id: str,
     snapshot: SnapshotPayload,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
@@ -1899,7 +2496,7 @@ async def update_meal_session(
                 "fat": snapshot.nutrition.fat,
             }
         else:
-            totals = calculate_nutrition(foods_payload)
+            totals = calculate_nutrition(foods_payload, request=request)
 
         # 2. 获取上一次快照用于计算"本次增量"
         last_snapshot = db.query(models.MealSnapshot)\
@@ -1924,7 +2521,7 @@ async def update_meal_session(
         )
         db.add(db_snapshot)
         for f in snapshot.foods:
-            cal = _calc_food_calories(f)
+            cal = _calc_food_calories(f, request=request)
             db.add(models.SnapshotFood(
                 id=str(uuid.uuid4()),
                 snapshot_id=snap_id,
@@ -2002,6 +2599,7 @@ async def update_meal_session(
 @app.post("/api/v1/meal/end")
 async def end_meal_session(
     req: MealEndRequest,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
@@ -2043,7 +2641,7 @@ async def end_meal_session(
                     "fat": final_snapshot.nutrition.fat,
                 }
             else:
-                totals = calculate_nutrition(foods_payload)
+                totals = calculate_nutrition(foods_payload, request=request)
 
             snap_id = str(uuid.uuid4())
             db_snapshot = models.MealSnapshot(
@@ -2060,7 +2658,7 @@ async def end_meal_session(
             )
             db.add(db_snapshot)
             for f in final_snapshot.foods:
-                cal = _calc_food_calories(f)
+                cal = _calc_food_calories(f, request=request)
                 db.add(models.SnapshotFood(
                     id=str(uuid.uuid4()),
                     snapshot_id=snap_id,
@@ -2125,7 +2723,8 @@ async def end_meal_session(
             nutrition_breakdown, 
             meal_context, 
             daily_context, 
-            user_profile
+            user_profile,
+            request
         )
         
         # 7. 构建 meal_summary（用于眼镜显示）
@@ -2709,7 +3308,8 @@ async def generate_llm_meal_advice(
     nutrition_breakdown: dict,
     meal_context: Optional[MealContextPayload] = None,
     daily_context: Optional[DailyContextPayload] = None,
-    user_profile: Optional[UserProfilePayload] = None
+    user_profile: Optional[UserProfilePayload] = None,
+    request: Optional[Request] = None
 ) -> Optional[dict]:
     """使用 LLM 生成个性化营养建议"""
     
@@ -2820,6 +3420,17 @@ async def generate_llm_meal_advice(
             max_tokens=1000
         )
         
+        # 记录 Token 使用
+        if hasattr(completion, 'usage') and completion.usage:
+            logger.info(f"Advice Token 使用: {completion.usage.total_tokens}")
+            if request:
+                record_token_usage(request, {
+                    "prompt_tokens": completion.usage.prompt_tokens,
+                    "completion_tokens": completion.usage.completion_tokens,
+                    "total_tokens": completion.usage.total_tokens,
+                    "model": QWEN_TEXT_MODEL
+                })
+            
         response_text = completion.choices[0].message.content.strip()
         
         # 尝试解析 JSON
@@ -2870,7 +3481,8 @@ async def generate_smart_meal_advice(
     nutrition_breakdown: dict,
     meal_context: Optional[MealContextPayload] = None,
     daily_context: Optional[DailyContextPayload] = None,
-    user_profile: Optional[UserProfilePayload] = None
+    user_profile: Optional[UserProfilePayload] = None,
+    request: Optional[Request] = None
 ) -> dict:
     """
     生成智能餐饮建议（主入口）
@@ -2879,7 +3491,7 @@ async def generate_smart_meal_advice(
     """
     # 尝试 LLM 生成
     llm_result = await generate_llm_meal_advice(
-        final_stats, nutrition_breakdown, meal_context, daily_context, user_profile
+        final_stats, nutrition_breakdown, meal_context, daily_context, user_profile, request
     )
     
     if llm_result:
@@ -3006,7 +3618,7 @@ def _build_meal_context_prompt(meal: MealContext) -> str:
 
 
 @app.post("/api/v1/chat/nutrition", response_model=ChatNutritionResponse)
-async def chat_nutrition(request: ChatNutritionRequest):
+async def chat_nutrition(request: ChatNutritionRequest, raw_request: Request):
     """
     智能营养助手对话接口 (基于 Qwen-Plus)
     
@@ -3089,6 +3701,15 @@ async def chat_nutrition(request: ChatNutritionRequest):
             max_tokens=500
         )
         
+        # 记录 Token 使用
+        if hasattr(completion, "usage") and completion.usage:
+            record_token_usage(raw_request, {
+                "prompt_tokens": completion.usage.prompt_tokens,
+                "completion_tokens": completion.usage.completion_tokens,
+                "total_tokens": completion.usage.total_tokens,
+                "model": QWEN_TEXT_MODEL
+            })
+        
         answer = completion.choices[0].message.content
         
         # 提取建议动作
@@ -3122,6 +3743,143 @@ async def chat_nutrition(request: ChatNutritionRequest):
     except Exception as e:
         logger.error(f"Chat API Error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"AI 服务暂时不可用: {str(e)}")
+
+@app.get("/dashboard")
+async def dashboard_page(admin_user: str = Depends(require_admin)):
+    return FileResponse(STATIC_DIR.parent / "static" / "dashboard.html")
+
+
+@app.get("/users-admin")
+async def users_admin_page(admin_user: str = Depends(require_admin)):
+    return FileResponse(STATIC_DIR.parent / "static" / "users.html")
+
+
+@app.get("/image-audit")
+async def image_audit_page(admin_user: str = Depends(require_admin)):
+    return FileResponse(STATIC_DIR.parent / "static" / "image_audit.html")
+
+
+@app.get("/api/v1/admin/users")
+async def get_admin_users(
+    limit: int = 50,
+    skip: int = 0,
+    search: Optional[str] = None,
+    admin_user: str = Depends(require_admin)
+):
+    """
+    获取用户列表及统计信息（包含 IP、Token 和画像全量数据）
+    """
+    db = SessionLocal()
+    try:
+        query = db.query(models.User)
+        if search:
+            query = query.filter(
+                (models.User.nickname.ilike(f"%{search}%")) |
+                (models.User.id.ilike(f"%{search}%")) |
+                (models.User.device_id.ilike(f"%{search}%"))
+            )
+        
+        total = query.count()
+        users = query.order_by(models.User.last_active_at.desc()).offset(skip).limit(limit).all()
+        
+        user_list = []
+        for u in users:
+            # 基础画像
+            d = u.to_profile_dict()
+            
+            # 补充周活跃度
+            week_ago = datetime.utcnow() - timedelta(days=7)
+            api_count = db.query(func.count(models.ApiLog.id)).filter(
+                models.ApiLog.user_id == u.id,
+                models.ApiLog.created_at >= week_ago
+            ).scalar() or 0
+            
+            # 活跃天数
+            active_days = db.query(func.count(models.DailyNutrition.id)).filter(
+                models.DailyNutrition.user_id == u.id
+            ).scalar() or 0
+            
+            d["week_api_calls"] = api_count
+            d["total_active_days"] = active_days
+            
+            user_list.append(d)
+            
+        return {
+            "total": total,
+            "users": user_list,
+            "limit": limit,
+            "skip": skip
+        }
+    finally:
+        db.close()
+
+
+@app.get("/api/v1/admin/dashboard/recent-images")
+async def get_dashboard_recent_images(
+    limit: int = 24, 
+    skip: int = 0,
+    admin_user: str = Depends(require_admin)
+):
+    """
+    获取近期上传的图片列表，包含 AI 分析结果。支持分页。
+    """
+    db = SessionLocal()
+    try:
+        from . import models_extended
+        # 获取图片记录，支持分页
+        records = db.query(models_extended.ImageRecord)\
+            .order_by(models_extended.ImageRecord.created_at.desc())\
+            .offset(skip)\
+            .limit(limit).all()
+        
+        image_list = []
+        for r in records:
+            # 构造图片 URL
+            img_url = f"/uploads/{r.filename}" if r.filename else ""
+            
+            analysis = r.analysis_result
+            label = "图片"
+            
+            # 优先从 analysis_result 中提取标签
+            if analysis:
+                if isinstance(analysis, dict):
+                    foods = analysis.get("foods", [])
+                    if foods:
+                        # 取前两个食物名称作为标签
+                        names = [f.get("name") or f.get("dish_name") or f.get("dish_name_cn") for f in foods[:2] if f.get("name") or f.get("dish_name") or f.get("dish_name_cn")]
+                        if names:
+                            label = " + ".join(names)
+                            if len(foods) > 2:
+                                label += "..."
+                    
+                    # 如果有热量信息，补充到标签
+                    nutrition = analysis.get("nutrition")
+                    if nutrition and nutrition.get("calories"):
+                        label = f"{label} ({int(nutrition['calories'])} kcal)"
+            
+            # 如果没有直接的分析结果，尝试通过 session_id 找 MealSnapshot
+            if not analysis and r.session_id:
+                snap = db.query(models.MealSnapshot).filter(models.MealSnapshot.session_id == r.session_id).order_by(models.MealSnapshot.captured_at.desc()).first()
+                if snap:
+                    analysis = snap.raw_json
+                    label = f"{snap.total_calories or 0} kcal"
+                    if not label or label == "0 kcal":
+                        label = "用餐记录"
+
+            image_list.append({
+                "id": r.id,
+                "type": "image",
+                "image_url": img_url,
+                "captured_at": r.created_at.isoformat() if r.created_at else None,
+                "user_id": r.user_id or "未知",
+                "label": label,
+                "analysis": analysis
+            })
+            
+        return {"images": image_list}
+    finally:
+        db.close()
+
 
 # ==================== 数据管理 API ====================
 
