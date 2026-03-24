@@ -951,7 +951,7 @@ response = MultiModalConversation.call(
 ## 联系方式
 
 - **项目网址**: https://viseat.cn
-- **开发团队**: 清觉（北京）科技有限公司
+- **开发团队**: 清觉科技
 - **GitHub 仓库**: https://github.com/xiceflame/viseat
 - **商务邮箱**: business@qingjue.com.cn
 
