@@ -78,24 +78,27 @@ class BluetoothSender {
             Log.d(TAG, "CXR-S SDK 初始化开始（真实模式）")
             Log.d(TAG, "════════════════════════════════════════")
             
-            // 重置内部状态（不断开蓝牙连接）
-            isConnected = false
-            connectedDeviceName = null
-            connectedDeviceType = 0
+            // 注意：不重置 isConnected 状态！
+            // 如果之前已经连接，保持连接状态，避免 UI 闪烁
+            // isConnected = false  // 移除这行
+            // connectedDeviceName = null  // 移除这行
+            // connectedDeviceType = 0  // 移除这行
             initRetryCount = 0
             
             // 直接设置监听器（不需要延迟）
             setupStatusListener()
             setupMessageSubscriptions()
             
+            // 立即探测一次（快速检测连接状态）
+            handler.post { probeConnectionStatus() }
+            
             // 延迟检测连接状态（给 CXR Service 启动时间）
             // 增加更多探测尝试，确保能检测到连接
+            handler.postDelayed({ probeConnectionStatus() }, 500)
             handler.postDelayed({ probeConnectionStatus() }, 1000)
             handler.postDelayed({ probeConnectionStatus() }, 2000)
             handler.postDelayed({ probeConnectionStatus() }, 3000)
             handler.postDelayed({ probeConnectionStatus() }, 5000)
-            handler.postDelayed({ probeConnectionStatus() }, 8000)
-            handler.postDelayed({ probeConnectionStatus() }, 10000)
             
             // 持续探测（每 5 秒一次，最多 60 秒）
             startPeriodicProbe()
@@ -337,20 +340,38 @@ class BluetoothSender {
      * -3 = EFAULT (flora 调用失败，通常是手机端未就绪)
      * -4 = EBUSY (忙)
      */
+    /**
+     * 图片类型标记
+     */
+    object ImageType {
+        const val AUTO_CAPTURE = 0      // 自动拍照（用餐监测中）
+        const val MANUAL_CAPTURE = 1    // 手动拍照（普通识别）
+        const val END_MEAL_CAPTURE = 2  // 结束用餐拍照（需要基线对比）
+    }
+    
     fun sendImage(
         imageData: ByteArray,
         format: String = "jpeg",
-        isManualCapture: Boolean = false
+        isManualCapture: Boolean = false,
+        isEndMealCapture: Boolean = false  // 新增：是否是结束用餐的最后一张照片
     ): Boolean {
         Log.d(TAG, "════════════════════════════════════════")
         Log.d(TAG, "[SEND] 准备发送图片...")
         Log.d(TAG, "[SEND] isConnected=$isConnected")
         Log.d(TAG, "[SEND] 图片大小: ${imageData.size} bytes")
         Log.d(TAG, "[SEND] 消息名称: ${Config.MsgName.IMAGE}")
+        Log.d(TAG, "[SEND] isEndMealCapture=$isEndMealCapture")
         
         if (!isConnected) {
             Log.w(TAG, "[SEND] ✗ 未连接到手机，无法发送图片")
             return false
+        }
+        
+        // 确定图片类型
+        val imageType = when {
+            isEndMealCapture -> ImageType.END_MEAL_CAPTURE
+            isManualCapture -> ImageType.MANUAL_CAPTURE
+            else -> ImageType.AUTO_CAPTURE
         }
         
         return if (USE_REAL_SDK) {
@@ -362,7 +383,7 @@ class BluetoothSender {
                     write(format)                              // [0] 图片格式
                     writeInt32(imageData.size)                 // [1] 数据大小
                     writeInt64(System.currentTimeMillis())     // [2] 时间戳
-                    writeInt32(if (isManualCapture) 1 else 0)  // [3] 是否主动拍照
+                    writeInt32(imageType)                      // [3] 图片类型: 0=自动, 1=手动, 2=结束用餐
                     write(imageData)                           // [4] 图片二进制数据
                 }
                 

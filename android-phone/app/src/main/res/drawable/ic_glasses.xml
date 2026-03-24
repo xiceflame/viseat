@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+    
+    <!-- Rokid AR 眼镜图标 - 基于实物设计 -->
+    
+    <!-- 左镜框 - 方形圆角 -->
+    <path
+        android:pathData="M4,24 L4,36 Q4,40 8,40 L20,40 Q24,40 24,36 L24,24 Q24,20 20,20 L8,20 Q4,20 4,24 Z"
+        android:strokeWidth="2"
+        android:strokeColor="#2C2C2E"
+        android:fillColor="#00000000"/>
+    
+    <!-- 右镜框 -->
+    <path
+        android:pathData="M40,24 L40,36 Q40,40 44,40 L56,40 Q60,40 60,36 L60,24 Q60,20 56,20 L44,20 Q40,20 40,24 Z"
+        android:strokeWidth="2"
+        android:strokeColor="#2C2C2E"
+        android:fillColor="#00000000"/>
+    
+    <!-- 鼻梁连接 -->
+    <path
+        android:pathData="M24,28 L40,28"
+        android:strokeWidth="2"
+        android:strokeColor="#2C2C2E"
+        android:strokeLineCap="round"/>
+    
+    <!-- 左镜腿 - 向后延伸 -->
+    <path
+        android:pathData="M4,26 L1,24 Q0,23 0,22 L0,18"
+        android:strokeWidth="2"
+        android:strokeColor="#2C2C2E"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"/>
+    
+    <!-- 右镜腿 -->
+    <path
+        android:pathData="M60,26 L63,24 Q64,23 64,22 L64,18"
+        android:strokeWidth="2"
+        android:strokeColor="#2C2C2E"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"/>
+    
+    <!-- 右侧摄像头模块 (圆形用path表示) -->
+    <path
+        android:pathData="M58,24m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0"
+        android:fillColor="#5AC8FA"/>
+    
+    <!-- 右侧 Rokid 标识点 -->
+    <path
+        android:pathData="M52,44m-1.5,0a1.5,1.5 0,1 1,3 0a1.5,1.5 0,1 1,-3 0"
+        android:fillColor="#34C759"/>
+</vector>

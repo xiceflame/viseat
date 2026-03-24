@@ -58,16 +58,38 @@ class RokidManager(private val context: Context) {
     }
     
     /**
-     * TTS 语音播报
+     * TTS 语音播报（打断之前的播报）
+     * 
+     * @param text 要播报的文本
      */
     fun speak(text: String) {
+        speak(text, flush = true)
+    }
+    
+    /**
+     * TTS 语音播报
+     * 
+     * @param text 要播报的文本
+     * @param flush true=打断之前的播报，false=排队等待
+     */
+    fun speak(text: String, flush: Boolean) {
         if (!isTtsReady) {
             Log.w(TAG, "TTS 未就绪，跳过播报: $text")
             return
         }
         
-        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "rokid_tts_${System.currentTimeMillis()}")
-        Log.d(TAG, "TTS 播报: $text")
+        val queueMode = if (flush) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+        tts?.speak(text, queueMode, null, "rokid_tts_${System.currentTimeMillis()}")
+        Log.d(TAG, "TTS 播报 (flush=$flush): $text")
+    }
+    
+    /**
+     * 追加播报（不打断之前的播报）
+     * 
+     * @param text 要播报的文本
+     */
+    fun speakAppend(text: String) {
+        speak(text, flush = false)
     }
     
     /**

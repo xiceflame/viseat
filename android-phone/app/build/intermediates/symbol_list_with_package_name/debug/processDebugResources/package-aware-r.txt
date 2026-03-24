@@ -1353,8 +1353,12 @@ color error_color_material_dark
 color error_color_material_light
 color foreground_material_dark
 color foreground_material_light
+color glasses_accent
+color glasses_camera
+color glasses_frame
 color highlighted_text_material_dark
 color highlighted_text_material_light
+color launcher_background
 color m3_appbar_overlay_color
 color m3_assist_chip_icon_tint_color
 color m3_assist_chip_stroke_color
@@ -2941,6 +2945,8 @@ drawable ic_call_decline
 drawable ic_call_decline_low
 drawable ic_clear_black_24
 drawable ic_clock_black_24dp
+drawable ic_glasses
+drawable ic_glasses_rokid
 drawable ic_keyboard_black_24dp
 drawable ic_launcher
 drawable ic_m3_chip_check

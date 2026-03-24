@@ -41,6 +41,8 @@ public final class MealSessionDao_Impl implements MealSessionDao {
 
   private final SharedSQLiteStatement __preparedStmtOfDeleteSession;
 
+  private final SharedSQLiteStatement __preparedStmtOfUpdateSessionCalories;
+
   public MealSessionDao_Impl(@NonNull final RoomDatabase __db) {
     this.__db = __db;
     this.__insertionAdapterOfMealSessionEntity = new EntityInsertionAdapter<MealSessionEntity>(__db) {
@@ -117,6 +119,20 @@ public final class MealSessionDao_Impl implements MealSessionDao {
       @NonNull
       public String createQuery() {
         final String _query = "DELETE FROM meal_sessions WHERE sessionId = ?";
+        return _query;
+      }
+    };
+    this.__preparedStmtOfUpdateSessionCalories = new SharedSQLiteStatement(__db) {
+      @Override
+      @NonNull
+      public String createQuery() {
+        final String _query = "\n"
+                + "        UPDATE meal_sessions SET \n"
+                + "            totalServedKcal = totalServedKcal + ?,\n"
+                + "            totalConsumedKcal = totalConsumedKcal + ?,\n"
+                + "            updatedAt = ? \n"
+                + "        WHERE sessionId = ?\n"
+                + "    ";
         return _query;
       }
     };
@@ -210,6 +226,38 @@ public final class MealSessionDao_Impl implements MealSessionDao {
           }
         } finally {
           __preparedStmtOfDeleteSession.release(_stmt);
+        }
+      }
+    }, $completion);
+  }
+
+  @Override
+  public Object updateSessionCalories(final String sessionId, final double caloriesDiff,
+      final long updatedAt, final Continuation<? super Unit> $completion) {
+    return CoroutinesRoom.execute(__db, true, new Callable<Unit>() {
+      @Override
+      @NonNull
+      public Unit call() throws Exception {
+        final SupportSQLiteStatement _stmt = __preparedStmtOfUpdateSessionCalories.acquire();
+        int _argIndex = 1;
+        _stmt.bindDouble(_argIndex, caloriesDiff);
+        _argIndex = 2;
+        _stmt.bindDouble(_argIndex, caloriesDiff);
+        _argIndex = 3;
+        _stmt.bindLong(_argIndex, updatedAt);
+        _argIndex = 4;
+        _stmt.bindString(_argIndex, sessionId);
+        try {
+          __db.beginTransaction();
+          try {
+            _stmt.executeUpdateDelete();
+            __db.setTransactionSuccessful();
+            return Unit.INSTANCE;
+          } finally {
+            __db.endTransaction();
+          }
+        } finally {
+          __preparedStmtOfUpdateSessionCalories.release(_stmt);
         }
       }
     }, $completion);

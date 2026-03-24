@@ -291,6 +291,7 @@ class MealSessionRepository(
                 snapshotId = snapshotId,
                 name = food.dishName,
                 chineseName = food.dishNameCn ?: food.dishName,
+                category = food.category,  // 保存食物分类
                 weightG = food.totalWeightG,
                 caloriesKcal = totalNutrition.calories * weightRatio,
                 proteinG = totalNutrition.protein * weightRatio,

@@ -1,0 +1,73 @@
+{
+  "snapshot_id": "demo_meal_start_001",
+  "session_id": "demo_session_001",
+  "mode": "start",
+  "raw_llm": {
+    "is_food": true,
+    "foods": [
+      {
+        "dish_name": "Wonton Soup",
+        "dish_name_cn": "馄饨汤",
+        "cooking_method": "boiled",
+        "ingredients": [
+          {"name_en": "wonton", "name_cn": "馄饨", "weight_g": 150, "confidence": 0.95}
+        ],
+        "total_weight_g": 150,
+        "confidence": 0.95,
+        "category": "meal"
+      },
+      {
+        "dish_name": "Tempura",
+        "dish_name_cn": "炸物",
+        "cooking_method": "deep-fried",
+        "ingredients": [
+          {"name_en": "tempura", "name_cn": "天妇罗", "weight_g": 80, "confidence": 0.92}
+        ],
+        "total_weight_g": 80,
+        "confidence": 0.92,
+        "category": "meal"
+      },
+      {
+        "dish_name": "Pancake",
+        "dish_name_cn": "煎饼",
+        "cooking_method": "pan-fried",
+        "ingredients": [
+          {"name_en": "pancake", "name_cn": "煎饼", "weight_g": 100, "confidence": 0.90}
+        ],
+        "total_weight_g": 100,
+        "confidence": 0.90,
+        "category": "meal"
+      },
+      {
+        "dish_name": "Meat Soup",
+        "dish_name_cn": "肉片汤",
+        "cooking_method": "boiled",
+        "ingredients": [
+          {"name_en": "pork", "name_cn": "猪肉", "weight_g": 60, "confidence": 0.88},
+          {"name_en": "vegetable", "name_cn": "蔬菜", "weight_g": 40, "confidence": 0.85}
+        ],
+        "total_weight_g": 100,
+        "confidence": 0.87,
+        "category": "meal"
+      }
+    ],
+    "suggestion": "这是一份丰盛的中式套餐，包含馄饨、炸物、煎饼和肉片汤。建议先喝汤，再吃主食。"
+  },
+  "snapshot": {
+    "foods": [
+      {"name": "wonton", "name_cn": "馄饨", "weight_g": 150, "calories_kcal": 360.0, "protein_g": 12.0, "carbs_g": 45.0, "fat_g": 15.0, "confidence": 0.95},
+      {"name": "tempura", "name_cn": "天妇罗", "weight_g": 80, "calories_kcal": 320.0, "protein_g": 8.0, "carbs_g": 32.0, "fat_g": 18.0, "confidence": 0.92},
+      {"name": "pancake", "name_cn": "煎饼", "weight_g": 100, "calories_kcal": 258.0, "protein_g": 6.0, "carbs_g": 42.0, "fat_g": 8.0, "confidence": 0.90},
+      {"name": "pork", "name_cn": "猪肉", "weight_g": 60, "calories_kcal": 144.0, "protein_g": 5.6, "carbs_g": 0.5, "fat_g": 13.2, "confidence": 0.88},
+      {"name": "vegetable", "name_cn": "蔬菜", "weight_g": 40, "calories_kcal": 10.0, "protein_g": 1.2, "carbs_g": 2.0, "fat_g": 0.2, "confidence": 0.85}
+    ],
+    "nutrition": {
+      "calories": 1092.0,
+      "protein": 32.8,
+      "carbs": 139.5,
+      "fat": 45.4
+    },
+    "image_url": "https://viseat.cn/uploads/b9ea2f96-d1a8-43d6-bc06-b023289ee081.jpg"
+  },
+  "suggestion": "这是一份丰盛的中式套餐，包含馄饨、炸物、煎饼和肉片汤。建议先喝汤，再吃主食。"
+}

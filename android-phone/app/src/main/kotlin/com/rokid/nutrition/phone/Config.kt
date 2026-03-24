@@ -52,6 +52,8 @@ object Config {
         const val PROCESSING_PHASE = "processing_phase"
         /** 手机→眼镜: 用餐总结 */
         const val MEAL_SUMMARY = "meal_summary"
+        /** 手机→眼镜: 个性化建议 */
+        const val PERSONALIZED_TIP = "personalized_tip"
     }
 
 

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">营养助手</string>
+    <string name="app_name">VISEAT食智</string>
     
     <!-- 蓝牙相关 -->
     <string name="bluetooth_connecting">正在连接眼镜...</string>
@@ -22,7 +22,7 @@
     
     <!-- 通知 -->
     <string name="notification_channel_name">眼镜连接服务</string>
-    <string name="notification_title">营养助手</string>
+    <string name="notification_title">VISEAT食智</string>
     <string name="notification_text">正在与眼镜保持连接</string>
     
     <!-- 导航 -->

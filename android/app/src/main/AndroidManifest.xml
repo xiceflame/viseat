@@ -47,6 +47,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        
+        <!-- 演示模式 Activity（用于录制AR界面动画） -->
+        <activity
+            android:name=".demo.DemoActivity"
+            android:exported="true"
+            android:label="VISEAT 演示模式"
+            android:theme="@style/Theme.RokidNutrition">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
     </application>
 
 </manifest>

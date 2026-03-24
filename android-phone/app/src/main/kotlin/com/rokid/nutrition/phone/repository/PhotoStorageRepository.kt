@@ -64,26 +64,43 @@ class PhotoStorageRepository(
     
     /**
      * 获取照片源（区分本地和云端）
+     * 
+     * @param snapshotIdOrSessionId 可以是快照ID或会话ID
      */
-    suspend fun getPhotoSource(snapshotId: String): PhotoSource? {
-        val snapshots = snapshotDao.getSnapshotsForSession(snapshotId)
-        val snapshot = snapshots.firstOrNull { it.id == snapshotId }
-            ?: snapshotDao.getLatestSnapshot(snapshotId)
-            ?: return null
+    suspend fun getPhotoSource(snapshotIdOrSessionId: String): PhotoSource? {
+        // 先尝试作为 sessionId 查询
+        val snapshots = snapshotDao.getSnapshotsForSession(snapshotIdOrSessionId)
+        val snapshot = if (snapshots.isNotEmpty()) {
+            // 找到了会话的快照，取最新的
+            snapshots.lastOrNull()
+        } else {
+            // 没找到，尝试作为 snapshotId 查询（通过 getLatestSnapshot 间接查询）
+            snapshotDao.getLatestSnapshot(snapshotIdOrSessionId)
+        }
+        
+        if (snapshot == null) {
+            Log.d(TAG, "未找到快照: $snapshotIdOrSessionId")
+            return null
+        }
         
         // 检查本地路径
         snapshot.localImagePath?.let { localPath ->
             val file = File(localPath)
             if (file.exists()) {
+                Log.d(TAG, "使用本地照片: $localPath")
                 return PhotoSource.Local(localPath)
+            } else {
+                Log.d(TAG, "本地照片不存在: $localPath")
             }
         }
         
         // 回退到云端 URL
         if (snapshot.imageUrl.isNotBlank()) {
+            Log.d(TAG, "使用云端照片: ${snapshot.imageUrl}")
             return PhotoSource.Remote(snapshot.imageUrl)
         }
         
+        Log.d(TAG, "没有可用的照片源")
         return null
     }
     

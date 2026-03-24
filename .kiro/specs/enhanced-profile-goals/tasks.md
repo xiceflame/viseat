@@ -1,0 +1,239 @@
+# Implementation Plan
+
+## Enhanced Profile & Goals System - 增强版个人信息管理和目标系统
+
+- [x] 1. 扩展数据模型和数据库
+  - [x] 1.1 扩展 UserProfileEntity 添加新字段
+    - 在 Entities.kt 中扩展 UserProfileEntity 添加: birthDate, targetDate, dietType, allergens (JSON), isOnboardingCompleted
+    - 更新 Room 数据库版本和迁移脚本
+    - _Requirements: 3.1-3.7, 6.1-6.5_
+  - [x] 1.2 扩展 UserProfile 领域模型
+    - 在 UserProfileRepository.kt 中扩展 UserProfile 数据类添加新字段
+    - 更新 toUserProfile() 转换方法
+    - 复用现有的 healthGoal, activityLevel, healthConditions, dietaryPreferences 字段
+    - _Requirements: 8.1-8.6_
+  - [x] 1.3 创建 WeightEntry 实体和 DAO
+    - 创建 WeightEntryEntity 用于体重追踪记录
+    - 创建 WeightEntryDao 支持增删查
+    - _Requirements: 11.1-11.6_
+  - [x] 1.4 创建枚举类型
+    - 创建 HealthGoal, Gender, ActivityLevel, DietType, Allergen 枚举
+    - 复用现有的 activityLevelOptions, healthGoalOptions 映射
+    - _Requirements: 2.1-2.6, 5.1-5.5, 6.1-6.5_
+
+- [x] 2. 实现营养计算工具类
+  - [x] 2.1 创建 NutritionCalculator 对象
+    - 实现 calculateBMI() - 复用现有 UserProfileRepository.calculateBMI()
+    - 实现 getBMIStatus() - 复用现有 ProfileScreen.getBMIStatus()
+    - 实现 calculateAge() 从出生日期计算年龄
+    - _Requirements: 3.3, 3.6_
+  - [x] 2.2 实现 BMR 和 TDEE 计算
+    - 实现 calculateBMR() 使用 Mifflin-St Jeor 公式
+    - 实现 calculateTDEE() 基于活动量因子
+    - 复用现有 UserProfile.calculateDailyCalories() 逻辑
+    - _Requirements: 9.1, 9.2_
+  - [x] 2.3 实现热量和宏量目标计算
+    - 实现 calculateDailyCalories() 基于健康目标调整
+    - 实现 calculateMacros() 基于饮食类型分配比例
+    - 实现 calculateNutritionGoals() 整合所有计算
+    - _Requirements: 9.3, 9.4, 9.5, 9.6_
+  - [x] 2.4 实现目标验证函数
+    - 实现 calculateWeeklyRate() 计算每周体重变化率
+    - 实现 isWeeklyRateSafe() 检查安全速率
+    - 实现 validateMacroRatios() 验证宏量比例总和
+    - _Requirements: 4.6, 4.7, 10.3, 10.4_
+  - [ ]* 2.5 编写 BMI 计算属性测试
+    - **Property 1: BMI Calculation Correctness**
+    - **Validates: Requirements 3.6, 8.3**
+  - [ ]* 2.6 编写 BMI 状态映射属性测试
+    - **Property 2: BMI Status Mapping**
+    - **Validates: Requirements 3.6**
+  - [ ]* 2.7 编写 BMR/TDEE 计算属性测试
+    - **Property 4: BMR Calculation (Mifflin-St Jeor)**
+    - **Property 5: TDEE Calculation**
+    - **Validates: Requirements 9.1, 9.2**
+  - [ ]* 2.8 编写热量目标和宏量计算属性测试
+    - **Property 6: Calorie Target Based on Goal**
+    - **Property 7: Macro Calculation from Calories**
+    - **Validates: Requirements 9.3, 9.4, 9.5**
+  - [ ]* 2.9 编写目标验证属性测试
+    - **Property 8: Weekly Rate Calculation**
+    - **Property 9: Weekly Rate Safety Check**
+    - **Property 10: Macro Ratio Sum Validation**
+    - **Validates: Requirements 4.6, 4.7, 10.3, 10.4**
+
+- [x] 3. Checkpoint - 确保计算逻辑测试通过
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 4. 实现 Onboarding UI 组件
+  - [x] 4.1 创建通用 UI 组件
+    - 创建 CapabilityHighlight 组件展示产品能力
+    - 创建 OnboardingProgressIndicator 进度指示器
+    - 创建 StepHeader 步骤标题组件
+    - 创建 NavigationButtons 导航按钮组件
+    - _Requirements: 1.2, 1.3_
+  - [x] 4.2 创建 WelcomeStep 欢迎页
+    - 实现 Logo 动画和品牌展示
+    - 实现价值主张文案
+    - 实现开始按钮
+    - _Requirements: 1.1_
+  - [x] 4.3 创建 GoalSelectionStep 目标选择
+    - 实现三个目标卡片 (减重/维持/增肌)
+    - 实现选中动画和激励文案
+    - 实现 CapabilityHighlight 展示 AI 能力
+    - _Requirements: 2.1-2.6_
+  - [x] 4.4 创建 BodyDataStep 身体数据输入
+    - 实现性别选择卡片
+    - 实现出生日期滚轮选择器
+    - 实现身高/体重滑块输入
+    - 实现 BMIIndicator 组件
+    - 实现 CapabilityHighlight 展示数据库规模
+    - _Requirements: 3.1-3.7_
+  - [x] 4.5 创建 TargetWeightStep 目标体重设定
+    - 实现目标体重滑块
+    - 实现目标日期选择器
+    - 实现每周速率显示和安全警告
+    - 实现 CapabilityHighlight 展示算法优势
+    - _Requirements: 4.1-4.8_
+  - [x] 4.6 创建 ActivityLevelStep 活动量评估
+    - 实现五档活动量卡片
+    - 实现活动因子显示
+    - 实现 CapabilityHighlight 展示 AI 动态调整
+    - _Requirements: 5.1-5.5_
+  - [x] 4.7 创建 DietaryPreferencesStep 饮食偏好
+    - 实现饮食类型选择 Chips
+    - 实现过敏原多选 Chips
+    - 实现 CapabilityHighlight 展示权威数据来源
+    - _Requirements: 6.1-6.5_
+  - [x] 4.8 创建 SummaryStep 个性化计划展示
+    - 实现热量目标卡片 (BMR + 活动 - 缺口)
+    - 实现宏量目标饼图
+    - 实现目标达成日期显示
+    - 实现核心价值展示和庆祝动画
+    - _Requirements: 7.1-7.7_
+
+- [x] 5. 实现 Onboarding 主流程
+  - [x] 5.1 创建 OnboardingViewModel
+    - 实现 OnboardingState 状态管理
+    - 实现步骤导航逻辑 (前进/后退)
+    - 实现数据收集和验证
+    - 实现跳过功能
+    - _Requirements: 1.1-1.6_
+  - [x] 5.2 创建 OnboardingScreen 主容器
+    - 实现步骤切换动画 (AnimatedContent)
+    - 实现进度指示器集成
+    - 实现跳过按钮
+    - _Requirements: 1.1-1.6_
+  - [x] 5.3 实现引导完成逻辑
+    - 保存用户档案到本地数据库
+    - 计算并保存营养目标
+    - 标记 isOnboardingCompleted = true
+    - 导航到主页
+    - _Requirements: 7.7, 16.1_
+  - [ ]* 5.4 编写引导状态保持属性测试
+    - **Property 11: Onboarding State Preservation**
+    - **Validates: Requirements 1.4**
+  - [ ]* 5.5 编写进度指示器属性测试
+    - **Property 12: Progress Indicator Accuracy**
+    - **Validates: Requirements 1.2**
+
+- [x] 6. 集成 Onboarding 到应用启动流程
+  - [x] 6.1 修改 MainActivity 启动逻辑
+    - 检查 isOnboardingCompleted 状态
+    - 新用户显示 OnboardingScreen
+    - 已完成用户直接进入主页
+    - _Requirements: 1.1, 1.5, 1.6_
+  - [x] 6.2 更新 Navigation 添加 Onboarding 路由
+    - 添加 onboarding 路由
+    - 实现条件导航逻辑
+    - _Requirements: 1.1_
+
+- [x] 7. Checkpoint - 确保 Onboarding 流程可用
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 8. 增强 ProfileScreen 功能
+  - [x] 8.1 更新 ProfileScreen 显示新字段
+    - 显示出生日期/年龄
+    - 显示饮食类型和过敏原
+    - 显示营养目标 (热量/蛋白质/碳水/脂肪)
+    - 复用现有的 UserHeaderCard, HealthProfileCard
+    - _Requirements: 8.1-8.6, 12.1-12.5_
+  - [x] 8.2 更新 EditProfileDialog 支持新字段
+    - 添加出生日期选择器
+    - 添加饮食类型选择
+    - 添加过敏原多选
+    - 复用现有的编辑对话框结构
+    - _Requirements: 8.1-8.6_
+  - [x] 8.3 创建 NutritionGoalsCard 组件
+    - 显示每日热量目标和进度
+    - 显示宏量营养素目标和进度
+    - 支持点击进入详细设置
+    - _Requirements: 12.3, 12.4_
+  - [x] 8.4 创建 NutritionGoalsSettingsDialog
+    - 显示当前目标值
+    - 支持手动调整热量目标
+    - 支持调整宏量比例 (确保总和 100%)
+    - 提供"恢复推荐值"按钮
+    - _Requirements: 10.1-10.6_
+
+- [x] 9. 实现体重追踪功能
+  - [x] 9.1 创建 WeightTrackingCard 组件
+    - 显示当前体重和目标体重
+    - 显示体重进度百分比
+    - 支持快速添加体重记录
+    - _Requirements: 11.1, 12.2_
+  - [x] 9.2 创建 WeightHistoryScreen
+    - 显示体重趋势折线图
+    - 显示体重记录列表
+    - 显示平均每周变化
+    - _Requirements: 11.4, 11.5_
+  - [x] 9.3 创建 AddWeightDialog
+    - 体重输入 (滑块或数字键盘)
+    - 可选备注
+    - 保存到本地数据库
+    - _Requirements: 11.2, 11.3_
+  - [x] 9.4 实现目标达成检测
+    - 检测当前体重是否达到目标
+    - 显示祝贺消息
+    - 建议设置新目标
+    - _Requirements: 11.6_
+
+- [x] 10. 实现 AI 健康洞察
+  - [x] 10.1 创建 AIInsightsCard 组件
+    - 显示个性化健康提示
+    - 支持点击查看详情
+    - _Requirements: 15.1, 15.5_
+  - [x] 10.2 扩展后端 API 支持健康洞察
+    - 在 ApiService.kt 添加 getHealthInsights() 接口
+    - 在 NetworkManager.kt 添加调用方法
+    - 传递用户档案、健康目标、近期饮食数据
+    - _Requirements: 15.2, 15.6_
+  - [x] 10.3 实现洞察生成逻辑
+    - 分析热量摄入模式
+    - 分析营养素缺口
+    - 生成个性化建议
+    - _Requirements: 15.3, 15.4_
+
+- [x] 11. 实现数据同步
+  - [x] 11.1 扩展后端 API 支持新字段
+    - 更新 updateUserProfile() 请求体添加新字段
+    - 更新 getUserProfile() 响应体添加新字段
+    - 复用现有的 NetworkManager 同步逻辑
+    - _Requirements: 16.2_
+  - [x] 11.2 实现体重数据同步
+    - 添加 syncWeightEntry() API
+    - 添加 getWeightHistory() API
+    - _Requirements: 16.5_
+  - [x] 11.3 实现离线队列
+    - 复用现有的 OfflineQueue 机制
+    - 添加档案更新队列
+    - 添加体重记录队列
+    - _Requirements: 16.3_
+  - [x] 11.4 实现数据恢复
+    - 应用启动时检查后端数据
+    - 使用 device_id 恢复用户档案
+    - 复用现有的 syncFromBackend() 逻辑
+    - _Requirements: 16.4_
+
+- [x] 12. Final Checkpoint - 确保所有测试通过
+  - Ensure all tests pass, ask the user if questions arise.

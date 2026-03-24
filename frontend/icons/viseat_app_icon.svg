@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <!-- ViSeat App Icon - 中式简约风格，借鉴茶颜悦色/霸王茶姬的东方美学 -->
+  <defs>
+    <!-- 渐变色 - 温暖的茶色系 -->
+    <linearGradient id="warmGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#5D4E37"/>
+      <stop offset="100%" stop-color="#3D3225"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- 背景 - 米白色，类似宣纸质感 -->
+  <rect x="0" y="0" width="192" height="192" rx="42" fill="#FAF8F5"/>
+  
+  <!-- 热气 - 三道优雅的 S 曲线 -->
+  <path d="M72 32 C68 42, 76 52, 72 62" fill="none" stroke="url(#warmGrad)" stroke-width="4" stroke-linecap="round" opacity="0.6"/>
+  <path d="M96 26 C92 38, 100 50, 96 62" fill="none" stroke="url(#warmGrad)" stroke-width="4" stroke-linecap="round" opacity="0.7"/>
+  <path d="M120 32 C116 42, 124 52, 120 62" fill="none" stroke="url(#warmGrad)" stroke-width="4" stroke-linecap="round" opacity="0.6"/>
+  
+  <!-- 碗身 - 圆润饱满的弧线 -->
+  <path d="M32 78 C32 74, 56 70, 96 70 C136 70, 160 74, 160 78 C160 118, 136 142, 96 142 C56 142, 32 118, 32 78" 
+        fill="none" stroke="url(#warmGrad)" stroke-width="6" stroke-linejoin="round"/>
+  
+  <!-- 底座 - 稳重简洁 -->
+  <path d="M76 148 L76 144" stroke="url(#warmGrad)" stroke-width="5" stroke-linecap="round"/>
+  <path d="M116 148 L116 144" stroke="url(#warmGrad)" stroke-width="5" stroke-linecap="round"/>
+  <path d="M76 148 C88 156, 104 156, 116 148" fill="none" stroke="url(#warmGrad)" stroke-width="5" stroke-linecap="round"/>
+</svg>

@@ -1,7 +1,7 @@
 package com.rokid.nutrition.phone.ui.component
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -13,19 +13,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
+import coil.compose.AsyncImagePainter
 import coil.request.ImageRequest
 
 /**
  * 全屏照片查看器对话框
  * 
- * 支持缩放和下载功能
+ * 支持本地文件和网络 URL
  */
 @Composable
 fun PhotoViewerDialog(
@@ -40,9 +40,8 @@ fun PhotoViewerDialog(
         return
     }
     
-    var scale by remember { mutableStateOf(1f) }
-    var offsetX by remember { mutableStateOf(0f) }
-    var offsetY by remember { mutableStateOf(0f) }
+    val context = LocalContext.current
+    var loadState by remember { mutableStateOf<AsyncImagePainter.State?>(null) }
     
     Dialog(
         onDismissRequest = onDismiss,
@@ -56,34 +55,47 @@ fun PhotoViewerDialog(
             modifier = modifier
                 .fillMaxSize()
                 .background(Color.Black)
+                .clickable { onDismiss() }
         ) {
-            // 图片（支持缩放和平移）
+            // 使用 Coil AsyncImage 支持本地和网络图片
             AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
+                model = ImageRequest.Builder(context)
                     .data(imageUri)
                     .crossfade(true)
+                    .size(1024)  // 限制最大尺寸避免 OOM
                     .build(),
                 contentDescription = "食物照片",
                 contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer(
-                        scaleX = scale,
-                        scaleY = scale,
-                        translationX = offsetX,
-                        translationY = offsetY
-                    )
-                    .pointerInput(Unit) {
-                        detectTransformGestures { _, pan, zoom, _ ->
-                            scale = (scale * zoom).coerceIn(0.5f, 4f)
-                            
-                            // 限制平移范围
-                            val maxOffset = (scale - 1) * 500
-                            offsetX = (offsetX + pan.x).coerceIn(-maxOffset, maxOffset)
-                            offsetY = (offsetY + pan.y).coerceIn(-maxOffset, maxOffset)
-                        }
-                    }
+                onState = { loadState = it },
+                modifier = Modifier.fillMaxSize()
             )
+            
+            // 加载中指示器
+            if (loadState is AsyncImagePainter.State.Loading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.align(Alignment.Center),
+                    color = Color.White
+                )
+            }
+            
+            // 加载失败提示
+            if (loadState is AsyncImagePainter.State.Error) {
+                Column(
+                    modifier = Modifier.align(Alignment.Center),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "图片加载失败",
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = imageUri.take(50) + if (imageUri.length > 50) "..." else "",
+                        color = Color.Gray,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
             
             // 顶部工具栏
             Row(
@@ -129,22 +141,9 @@ fun PhotoViewerDialog(
                 }
             }
             
-            // 缩放提示
-            if (scale != 1f) {
-                Text(
-                    text = "${(scale * 100).toInt()}%",
-                    color = Color.White.copy(alpha = 0.7f),
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 32.dp)
-                        .background(Color.Black.copy(alpha = 0.5f), CircleShape)
-                        .padding(horizontal = 12.dp, vertical = 4.dp)
-                )
-            }
-            
-            // 双击重置提示
+            // 底部提示
             Text(
-                text = "双指缩放 · 拖动平移",
+                text = "点击任意位置关闭",
                 color = Color.White.copy(alpha = 0.5f),
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier

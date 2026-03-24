@@ -48,7 +48,7 @@ public final class SnapshotFoodDao_Impl implements SnapshotFoodDao {
       @Override
       @NonNull
       protected String createQuery() {
-        return "INSERT OR REPLACE INTO `snapshot_foods` (`id`,`snapshotId`,`name`,`chineseName`,`originalWeightG`,`originalCaloriesKcal`,`originalProteinG`,`originalCarbsG`,`originalFatG`,`weightG`,`caloriesKcal`,`proteinG`,`carbsG`,`fatG`,`confidence`,`cookingMethod`,`isEdited`,`editedAt`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+        return "INSERT OR REPLACE INTO `snapshot_foods` (`id`,`snapshotId`,`name`,`chineseName`,`category`,`originalWeightG`,`originalCaloriesKcal`,`originalProteinG`,`originalCarbsG`,`originalFatG`,`weightG`,`caloriesKcal`,`proteinG`,`carbsG`,`fatG`,`confidence`,`cookingMethod`,`isEdited`,`editedAt`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
       }
 
       @Override
@@ -62,60 +62,65 @@ public final class SnapshotFoodDao_Impl implements SnapshotFoodDao {
         } else {
           statement.bindString(4, entity.getChineseName());
         }
-        if (entity.getOriginalWeightG() == null) {
+        if (entity.getCategory() == null) {
           statement.bindNull(5);
         } else {
-          statement.bindDouble(5, entity.getOriginalWeightG());
+          statement.bindString(5, entity.getCategory());
         }
-        if (entity.getOriginalCaloriesKcal() == null) {
+        if (entity.getOriginalWeightG() == null) {
           statement.bindNull(6);
         } else {
-          statement.bindDouble(6, entity.getOriginalCaloriesKcal());
+          statement.bindDouble(6, entity.getOriginalWeightG());
         }
-        if (entity.getOriginalProteinG() == null) {
+        if (entity.getOriginalCaloriesKcal() == null) {
           statement.bindNull(7);
         } else {
-          statement.bindDouble(7, entity.getOriginalProteinG());
+          statement.bindDouble(7, entity.getOriginalCaloriesKcal());
         }
-        if (entity.getOriginalCarbsG() == null) {
+        if (entity.getOriginalProteinG() == null) {
           statement.bindNull(8);
         } else {
-          statement.bindDouble(8, entity.getOriginalCarbsG());
+          statement.bindDouble(8, entity.getOriginalProteinG());
         }
-        if (entity.getOriginalFatG() == null) {
+        if (entity.getOriginalCarbsG() == null) {
           statement.bindNull(9);
         } else {
-          statement.bindDouble(9, entity.getOriginalFatG());
+          statement.bindDouble(9, entity.getOriginalCarbsG());
         }
-        statement.bindDouble(10, entity.getWeightG());
-        statement.bindDouble(11, entity.getCaloriesKcal());
-        if (entity.getProteinG() == null) {
-          statement.bindNull(12);
+        if (entity.getOriginalFatG() == null) {
+          statement.bindNull(10);
         } else {
-          statement.bindDouble(12, entity.getProteinG());
+          statement.bindDouble(10, entity.getOriginalFatG());
         }
-        if (entity.getCarbsG() == null) {
+        statement.bindDouble(11, entity.getWeightG());
+        statement.bindDouble(12, entity.getCaloriesKcal());
+        if (entity.getProteinG() == null) {
           statement.bindNull(13);
         } else {
-          statement.bindDouble(13, entity.getCarbsG());
+          statement.bindDouble(13, entity.getProteinG());
         }
-        if (entity.getFatG() == null) {
+        if (entity.getCarbsG() == null) {
           statement.bindNull(14);
         } else {
-          statement.bindDouble(14, entity.getFatG());
+          statement.bindDouble(14, entity.getCarbsG());
         }
-        statement.bindDouble(15, entity.getConfidence());
-        if (entity.getCookingMethod() == null) {
-          statement.bindNull(16);
+        if (entity.getFatG() == null) {
+          statement.bindNull(15);
         } else {
-          statement.bindString(16, entity.getCookingMethod());
+          statement.bindDouble(15, entity.getFatG());
+        }
+        statement.bindDouble(16, entity.getConfidence());
+        if (entity.getCookingMethod() == null) {
+          statement.bindNull(17);
+        } else {
+          statement.bindString(17, entity.getCookingMethod());
         }
         final int _tmp = entity.isEdited() ? 1 : 0;
-        statement.bindLong(17, _tmp);
+        statement.bindLong(18, _tmp);
         if (entity.getEditedAt() == null) {
-          statement.bindNull(18);
+          statement.bindNull(19);
         } else {
-          statement.bindLong(18, entity.getEditedAt());
+          statement.bindLong(19, entity.getEditedAt());
         }
       }
     };
@@ -313,6 +318,7 @@ public final class SnapshotFoodDao_Impl implements SnapshotFoodDao {
           final int _cursorIndexOfSnapshotId = CursorUtil.getColumnIndexOrThrow(_cursor, "snapshotId");
           final int _cursorIndexOfName = CursorUtil.getColumnIndexOrThrow(_cursor, "name");
           final int _cursorIndexOfChineseName = CursorUtil.getColumnIndexOrThrow(_cursor, "chineseName");
+          final int _cursorIndexOfCategory = CursorUtil.getColumnIndexOrThrow(_cursor, "category");
           final int _cursorIndexOfOriginalWeightG = CursorUtil.getColumnIndexOrThrow(_cursor, "originalWeightG");
           final int _cursorIndexOfOriginalCaloriesKcal = CursorUtil.getColumnIndexOrThrow(_cursor, "originalCaloriesKcal");
           final int _cursorIndexOfOriginalProteinG = CursorUtil.getColumnIndexOrThrow(_cursor, "originalProteinG");
@@ -342,6 +348,12 @@ public final class SnapshotFoodDao_Impl implements SnapshotFoodDao {
             } else {
               _tmpChineseName = _cursor.getString(_cursorIndexOfChineseName);
             }
+            final String _tmpCategory;
+            if (_cursor.isNull(_cursorIndexOfCategory)) {
+              _tmpCategory = null;
+            } else {
+              _tmpCategory = _cursor.getString(_cursorIndexOfCategory);
+            }
             final Double _tmpOriginalWeightG;
             if (_cursor.isNull(_cursorIndexOfOriginalWeightG)) {
               _tmpOriginalWeightG = null;
@@ -412,7 +424,7 @@ public final class SnapshotFoodDao_Impl implements SnapshotFoodDao {
             } else {
               _tmpEditedAt = _cursor.getLong(_cursorIndexOfEditedAt);
             }
-            _item = new SnapshotFoodEntity(_tmpId,_tmpSnapshotId,_tmpName,_tmpChineseName,_tmpOriginalWeightG,_tmpOriginalCaloriesKcal,_tmpOriginalProteinG,_tmpOriginalCarbsG,_tmpOriginalFatG,_tmpWeightG,_tmpCaloriesKcal,_tmpProteinG,_tmpCarbsG,_tmpFatG,_tmpConfidence,_tmpCookingMethod,_tmpIsEdited,_tmpEditedAt);
+            _item = new SnapshotFoodEntity(_tmpId,_tmpSnapshotId,_tmpName,_tmpChineseName,_tmpCategory,_tmpOriginalWeightG,_tmpOriginalCaloriesKcal,_tmpOriginalProteinG,_tmpOriginalCarbsG,_tmpOriginalFatG,_tmpWeightG,_tmpCaloriesKcal,_tmpProteinG,_tmpCarbsG,_tmpFatG,_tmpConfidence,_tmpCookingMethod,_tmpIsEdited,_tmpEditedAt);
             _result.add(_item);
           }
           return _result;
@@ -442,6 +454,7 @@ public final class SnapshotFoodDao_Impl implements SnapshotFoodDao {
           final int _cursorIndexOfSnapshotId = CursorUtil.getColumnIndexOrThrow(_cursor, "snapshotId");
           final int _cursorIndexOfName = CursorUtil.getColumnIndexOrThrow(_cursor, "name");
           final int _cursorIndexOfChineseName = CursorUtil.getColumnIndexOrThrow(_cursor, "chineseName");
+          final int _cursorIndexOfCategory = CursorUtil.getColumnIndexOrThrow(_cursor, "category");
           final int _cursorIndexOfOriginalWeightG = CursorUtil.getColumnIndexOrThrow(_cursor, "originalWeightG");
           final int _cursorIndexOfOriginalCaloriesKcal = CursorUtil.getColumnIndexOrThrow(_cursor, "originalCaloriesKcal");
           final int _cursorIndexOfOriginalProteinG = CursorUtil.getColumnIndexOrThrow(_cursor, "originalProteinG");
@@ -469,6 +482,12 @@ public final class SnapshotFoodDao_Impl implements SnapshotFoodDao {
               _tmpChineseName = null;
             } else {
               _tmpChineseName = _cursor.getString(_cursorIndexOfChineseName);
+            }
+            final String _tmpCategory;
+            if (_cursor.isNull(_cursorIndexOfCategory)) {
+              _tmpCategory = null;
+            } else {
+              _tmpCategory = _cursor.getString(_cursorIndexOfCategory);
             }
             final Double _tmpOriginalWeightG;
             if (_cursor.isNull(_cursorIndexOfOriginalWeightG)) {
@@ -540,9 +559,151 @@ public final class SnapshotFoodDao_Impl implements SnapshotFoodDao {
             } else {
               _tmpEditedAt = _cursor.getLong(_cursorIndexOfEditedAt);
             }
-            _result = new SnapshotFoodEntity(_tmpId,_tmpSnapshotId,_tmpName,_tmpChineseName,_tmpOriginalWeightG,_tmpOriginalCaloriesKcal,_tmpOriginalProteinG,_tmpOriginalCarbsG,_tmpOriginalFatG,_tmpWeightG,_tmpCaloriesKcal,_tmpProteinG,_tmpCarbsG,_tmpFatG,_tmpConfidence,_tmpCookingMethod,_tmpIsEdited,_tmpEditedAt);
+            _result = new SnapshotFoodEntity(_tmpId,_tmpSnapshotId,_tmpName,_tmpChineseName,_tmpCategory,_tmpOriginalWeightG,_tmpOriginalCaloriesKcal,_tmpOriginalProteinG,_tmpOriginalCarbsG,_tmpOriginalFatG,_tmpWeightG,_tmpCaloriesKcal,_tmpProteinG,_tmpCarbsG,_tmpFatG,_tmpConfidence,_tmpCookingMethod,_tmpIsEdited,_tmpEditedAt);
           } else {
             _result = null;
+          }
+          return _result;
+        } finally {
+          _cursor.close();
+          _statement.release();
+        }
+      }
+    }, $completion);
+  }
+
+  @Override
+  public Object getFoodsInTimeRange(final long startTime, final long endTime,
+      final Continuation<? super List<SnapshotFoodEntity>> $completion) {
+    final String _sql = "\n"
+            + "        SELECT sf.* FROM snapshot_foods sf\n"
+            + "        INNER JOIN meal_snapshots ms ON sf.snapshotId = ms.id\n"
+            + "        WHERE ms.capturedAt >= ? AND ms.capturedAt < ?\n"
+            + "    ";
+    final RoomSQLiteQuery _statement = RoomSQLiteQuery.acquire(_sql, 2);
+    int _argIndex = 1;
+    _statement.bindLong(_argIndex, startTime);
+    _argIndex = 2;
+    _statement.bindLong(_argIndex, endTime);
+    final CancellationSignal _cancellationSignal = DBUtil.createCancellationSignal();
+    return CoroutinesRoom.execute(__db, false, _cancellationSignal, new Callable<List<SnapshotFoodEntity>>() {
+      @Override
+      @NonNull
+      public List<SnapshotFoodEntity> call() throws Exception {
+        final Cursor _cursor = DBUtil.query(__db, _statement, false, null);
+        try {
+          final int _cursorIndexOfId = CursorUtil.getColumnIndexOrThrow(_cursor, "id");
+          final int _cursorIndexOfSnapshotId = CursorUtil.getColumnIndexOrThrow(_cursor, "snapshotId");
+          final int _cursorIndexOfName = CursorUtil.getColumnIndexOrThrow(_cursor, "name");
+          final int _cursorIndexOfChineseName = CursorUtil.getColumnIndexOrThrow(_cursor, "chineseName");
+          final int _cursorIndexOfCategory = CursorUtil.getColumnIndexOrThrow(_cursor, "category");
+          final int _cursorIndexOfOriginalWeightG = CursorUtil.getColumnIndexOrThrow(_cursor, "originalWeightG");
+          final int _cursorIndexOfOriginalCaloriesKcal = CursorUtil.getColumnIndexOrThrow(_cursor, "originalCaloriesKcal");
+          final int _cursorIndexOfOriginalProteinG = CursorUtil.getColumnIndexOrThrow(_cursor, "originalProteinG");
+          final int _cursorIndexOfOriginalCarbsG = CursorUtil.getColumnIndexOrThrow(_cursor, "originalCarbsG");
+          final int _cursorIndexOfOriginalFatG = CursorUtil.getColumnIndexOrThrow(_cursor, "originalFatG");
+          final int _cursorIndexOfWeightG = CursorUtil.getColumnIndexOrThrow(_cursor, "weightG");
+          final int _cursorIndexOfCaloriesKcal = CursorUtil.getColumnIndexOrThrow(_cursor, "caloriesKcal");
+          final int _cursorIndexOfProteinG = CursorUtil.getColumnIndexOrThrow(_cursor, "proteinG");
+          final int _cursorIndexOfCarbsG = CursorUtil.getColumnIndexOrThrow(_cursor, "carbsG");
+          final int _cursorIndexOfFatG = CursorUtil.getColumnIndexOrThrow(_cursor, "fatG");
+          final int _cursorIndexOfConfidence = CursorUtil.getColumnIndexOrThrow(_cursor, "confidence");
+          final int _cursorIndexOfCookingMethod = CursorUtil.getColumnIndexOrThrow(_cursor, "cookingMethod");
+          final int _cursorIndexOfIsEdited = CursorUtil.getColumnIndexOrThrow(_cursor, "isEdited");
+          final int _cursorIndexOfEditedAt = CursorUtil.getColumnIndexOrThrow(_cursor, "editedAt");
+          final List<SnapshotFoodEntity> _result = new ArrayList<SnapshotFoodEntity>(_cursor.getCount());
+          while (_cursor.moveToNext()) {
+            final SnapshotFoodEntity _item;
+            final String _tmpId;
+            _tmpId = _cursor.getString(_cursorIndexOfId);
+            final String _tmpSnapshotId;
+            _tmpSnapshotId = _cursor.getString(_cursorIndexOfSnapshotId);
+            final String _tmpName;
+            _tmpName = _cursor.getString(_cursorIndexOfName);
+            final String _tmpChineseName;
+            if (_cursor.isNull(_cursorIndexOfChineseName)) {
+              _tmpChineseName = null;
+            } else {
+              _tmpChineseName = _cursor.getString(_cursorIndexOfChineseName);
+            }
+            final String _tmpCategory;
+            if (_cursor.isNull(_cursorIndexOfCategory)) {
+              _tmpCategory = null;
+            } else {
+              _tmpCategory = _cursor.getString(_cursorIndexOfCategory);
+            }
+            final Double _tmpOriginalWeightG;
+            if (_cursor.isNull(_cursorIndexOfOriginalWeightG)) {
+              _tmpOriginalWeightG = null;
+            } else {
+              _tmpOriginalWeightG = _cursor.getDouble(_cursorIndexOfOriginalWeightG);
+            }
+            final Double _tmpOriginalCaloriesKcal;
+            if (_cursor.isNull(_cursorIndexOfOriginalCaloriesKcal)) {
+              _tmpOriginalCaloriesKcal = null;
+            } else {
+              _tmpOriginalCaloriesKcal = _cursor.getDouble(_cursorIndexOfOriginalCaloriesKcal);
+            }
+            final Double _tmpOriginalProteinG;
+            if (_cursor.isNull(_cursorIndexOfOriginalProteinG)) {
+              _tmpOriginalProteinG = null;
+            } else {
+              _tmpOriginalProteinG = _cursor.getDouble(_cursorIndexOfOriginalProteinG);
+            }
+            final Double _tmpOriginalCarbsG;
+            if (_cursor.isNull(_cursorIndexOfOriginalCarbsG)) {
+              _tmpOriginalCarbsG = null;
+            } else {
+              _tmpOriginalCarbsG = _cursor.getDouble(_cursorIndexOfOriginalCarbsG);
+            }
+            final Double _tmpOriginalFatG;
+            if (_cursor.isNull(_cursorIndexOfOriginalFatG)) {
+              _tmpOriginalFatG = null;
+            } else {
+              _tmpOriginalFatG = _cursor.getDouble(_cursorIndexOfOriginalFatG);
+            }
+            final double _tmpWeightG;
+            _tmpWeightG = _cursor.getDouble(_cursorIndexOfWeightG);
+            final double _tmpCaloriesKcal;
+            _tmpCaloriesKcal = _cursor.getDouble(_cursorIndexOfCaloriesKcal);
+            final Double _tmpProteinG;
+            if (_cursor.isNull(_cursorIndexOfProteinG)) {
+              _tmpProteinG = null;
+            } else {
+              _tmpProteinG = _cursor.getDouble(_cursorIndexOfProteinG);
+            }
+            final Double _tmpCarbsG;
+            if (_cursor.isNull(_cursorIndexOfCarbsG)) {
+              _tmpCarbsG = null;
+            } else {
+              _tmpCarbsG = _cursor.getDouble(_cursorIndexOfCarbsG);
+            }
+            final Double _tmpFatG;
+            if (_cursor.isNull(_cursorIndexOfFatG)) {
+              _tmpFatG = null;
+            } else {
+              _tmpFatG = _cursor.getDouble(_cursorIndexOfFatG);
+            }
+            final double _tmpConfidence;
+            _tmpConfidence = _cursor.getDouble(_cursorIndexOfConfidence);
+            final String _tmpCookingMethod;
+            if (_cursor.isNull(_cursorIndexOfCookingMethod)) {
+              _tmpCookingMethod = null;
+            } else {
+              _tmpCookingMethod = _cursor.getString(_cursorIndexOfCookingMethod);
+            }
+            final boolean _tmpIsEdited;
+            final int _tmp;
+            _tmp = _cursor.getInt(_cursorIndexOfIsEdited);
+            _tmpIsEdited = _tmp != 0;
+            final Long _tmpEditedAt;
+            if (_cursor.isNull(_cursorIndexOfEditedAt)) {
+              _tmpEditedAt = null;
+            } else {
+              _tmpEditedAt = _cursor.getLong(_cursorIndexOfEditedAt);
+            }
+            _item = new SnapshotFoodEntity(_tmpId,_tmpSnapshotId,_tmpName,_tmpChineseName,_tmpCategory,_tmpOriginalWeightG,_tmpOriginalCaloriesKcal,_tmpOriginalProteinG,_tmpOriginalCarbsG,_tmpOriginalFatG,_tmpWeightG,_tmpCaloriesKcal,_tmpProteinG,_tmpCarbsG,_tmpFatG,_tmpConfidence,_tmpCookingMethod,_tmpIsEdited,_tmpEditedAt);
+            _result.add(_item);
           }
           return _result;
         } finally {

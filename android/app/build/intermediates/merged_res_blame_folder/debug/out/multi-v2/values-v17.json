@@ -4,7 +4,7 @@
             "outputFile": "com.rokid.nutrition.app-mergeDebugResources-68:/values-v17/values-v17.xml",
             "map": [
                 {
-                    "source": "/Users/linjunjie/.gradle/caches/transforms-3/af226701e07b6e5753175ffad1df9a85/transformed/appcompat-1.6.1/res/values-v17/values-v17.xml",
+                    "source": "/Users/linjunjie/.gradle/caches/transforms-3/732a67fbf3b67b087ed228cb561dee59/transformed/appcompat-1.6.1/res/values-v17/values-v17.xml",
                     "from": {
                         "startLines": "2,5,9,12,15,18,22,25,29,33,37,40,43,46,50,53,57",
                         "startColumns": "4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4",

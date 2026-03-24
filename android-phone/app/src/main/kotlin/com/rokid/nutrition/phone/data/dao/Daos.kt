@@ -80,6 +80,24 @@ interface MealSessionDao {
     
     @Query("DELETE FROM meal_sessions WHERE sessionId = :sessionId")
     suspend fun deleteSession(sessionId: String)
+    
+    /**
+     * 更新会话的热量数据
+     * 
+     * 当食物被编辑或删除时调用此方法更新会话总热量
+     */
+    @Query("""
+        UPDATE meal_sessions SET 
+            totalServedKcal = totalServedKcal + :caloriesDiff,
+            totalConsumedKcal = totalConsumedKcal + :caloriesDiff,
+            updatedAt = :updatedAt 
+        WHERE sessionId = :sessionId
+    """)
+    suspend fun updateSessionCalories(
+        sessionId: String,
+        caloriesDiff: Double,
+        updatedAt: Long
+    )
 }
 
 
@@ -147,6 +165,44 @@ interface SnapshotFoodDao {
     
     @Query("DELETE FROM snapshot_foods WHERE id = :foodId")
     suspend fun deleteFood(foodId: String)
+    
+    /**
+     * 获取指定时间范围内的所有食物（用于统计）
+     * 通过 snapshot 的 capturedAt 时间筛选
+     */
+    @Query("""
+        SELECT sf.* FROM snapshot_foods sf
+        INNER JOIN meal_snapshots ms ON sf.snapshotId = ms.id
+        WHERE ms.capturedAt >= :startTime AND ms.capturedAt < :endTime
+    """)
+    suspend fun getFoodsInTimeRange(startTime: Long, endTime: Long): List<SnapshotFoodEntity>
+}
+
+/**
+ * 体重记录 DAO
+ */
+@Dao
+interface WeightEntryDao {
+    @Query("SELECT * FROM weight_entries ORDER BY recordedAt DESC")
+    fun getAllEntries(): Flow<List<WeightEntryEntity>>
+    
+    @Query("SELECT * FROM weight_entries ORDER BY recordedAt DESC LIMIT :limit")
+    suspend fun getRecentEntries(limit: Int = 30): List<WeightEntryEntity>
+    
+    @Query("SELECT * FROM weight_entries WHERE recordedAt >= :startTime AND recordedAt < :endTime ORDER BY recordedAt ASC")
+    suspend fun getEntriesInRange(startTime: Long, endTime: Long): List<WeightEntryEntity>
+    
+    @Query("SELECT * FROM weight_entries ORDER BY recordedAt DESC LIMIT 1")
+    suspend fun getLatestEntry(): WeightEntryEntity?
+    
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(entry: WeightEntryEntity)
+    
+    @Query("DELETE FROM weight_entries WHERE id = :id")
+    suspend fun delete(id: String)
+    
+    @Query("DELETE FROM weight_entries")
+    suspend fun deleteAll()
 }
 
 /**

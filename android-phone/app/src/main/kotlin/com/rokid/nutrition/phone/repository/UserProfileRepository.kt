@@ -56,18 +56,62 @@ class UserProfileRepository(
             nickname = profile.nickname,
             age = profile.age,
             gender = profile.gender,
+            birthDate = profile.birthDate,
             height = profile.height,
             weight = profile.weight,
             bmi = calculateBMI(profile.height, profile.weight),
             activityLevel = profile.activityLevel,
             healthGoal = profile.healthGoal,
             targetWeight = profile.targetWeight,
+            targetDate = profile.targetDate,
+            dietType = profile.dietType,
+            allergens = gson.toJson(profile.allergens),
             healthConditions = gson.toJson(profile.healthConditions),
             dietaryPreferences = gson.toJson(profile.dietaryPreferences),
+            isOnboardingCompleted = profile.isOnboardingCompleted,
             createdAt = now,
             updatedAt = now
         )
         userProfileDao.saveProfile(entity)
+    }
+    
+    /**
+     * 检查是否完成引导
+     */
+    suspend fun isOnboardingCompleted(): Boolean {
+        return userProfileDao.getProfile()?.isOnboardingCompleted ?: false
+    }
+    
+    /**
+     * 标记引导完成
+     */
+    suspend fun markOnboardingCompleted() {
+        val profile = getProfile()
+        if (profile != null) {
+            saveProfile(profile.copy(isOnboardingCompleted = true))
+        }
+    }
+    
+    /**
+     * 创建默认用户档案（用于跳过引导）
+     */
+    fun createDefaultProfile(): UserProfile {
+        return UserProfile(
+            age = 25,
+            height = 170f,
+            weight = 65f,
+            bmi = 22.5f,
+            healthConditions = emptyList(),
+            dietaryPreferences = emptyList(),
+            isOnboardingCompleted = true
+        )
+    }
+
+    /**
+     * 保存默认用户档案（用于跳过引导）
+     */
+    suspend fun saveDefaultProfile() {
+        saveProfile(createDefaultProfile())
     }
     
     /**
@@ -94,7 +138,12 @@ class UserProfileRepository(
                     healthGoal = profile.healthGoal,
                     targetWeight = profile.targetWeight,
                     healthConditions = profile.healthConditions,
-                    dietaryPreferences = profile.dietaryPreferences
+                    dietaryPreferences = profile.dietaryPreferences,
+                    // 新增字段
+                    birthDate = profile.birthDate,
+                    targetDate = profile.targetDate,
+                    dietType = profile.dietType,
+                    allergens = profile.allergens
                 )
                 
                 result.fold(
@@ -123,6 +172,8 @@ class UserProfileRepository(
     
     /**
      * 从后端同步用户档案到本地（通过 device_id）
+     * 
+     * 支持增强版字段：birthDate, targetDate, dietType, allergens
      */
     suspend fun syncFromBackend(deviceId: String): Result<UserProfile?> {
         if (networkManager == null) {
@@ -139,17 +190,22 @@ class UserProfileRepository(
                             nickname = null,  // 后端暂不支持昵称
                             age = profileData.age ?: 25,
                             gender = profileData.gender ?: "male",
+                            birthDate = profileData.birthDate,  // 新增：出生日期
                             height = profileData.height ?: 170f,
                             weight = profileData.weight ?: 65f,
                             bmi = profileData.bmi ?: 0f,
                             activityLevel = profileData.activityLevel ?: "moderate",
                             healthGoal = profileData.healthGoal ?: "maintain",
                             targetWeight = profileData.targetWeight,
+                            targetDate = profileData.targetDate,  // 新增：目标日期
+                            dietType = profileData.dietType ?: "omnivore",  // 新增：饮食类型
+                            allergens = profileData.allergens ?: emptyList(),  // 新增：过敏原
                             healthConditions = profileData.healthConditions ?: emptyList(),
-                            dietaryPreferences = profileData.dietaryPreferences ?: emptyList()
+                            dietaryPreferences = profileData.dietaryPreferences ?: emptyList(),
+                            isOnboardingCompleted = true  // 从后端恢复的数据视为已完成引导
                         )
                         saveProfile(profile)
-                        Log.d(TAG, "从后端同步档案成功: deviceId=$deviceId")
+                        Log.d(TAG, "从后端同步档案成功: deviceId=$deviceId, birthDate=${profileData.birthDate}, dietType=${profileData.dietType}")
                         Result.success(profile)
                     } else {
                         Log.d(TAG, "后端无档案数据: deviceId=$deviceId")
@@ -185,12 +241,20 @@ class UserProfileRepository(
             nickname = nickname,
             age = age,
             gender = gender,
+            birthDate = birthDate,
             height = height,
             weight = weight,
             bmi = bmi,
             activityLevel = activityLevel,
             healthGoal = healthGoal,
             targetWeight = targetWeight,
+            targetDate = targetDate,
+            dietType = dietType,
+            allergens = try {
+                gson.fromJson(allergens, Array<String>::class.java).toList()
+            } catch (e: Exception) {
+                emptyList()
+            },
             healthConditions = try {
                 gson.fromJson(healthConditions, Array<String>::class.java).toList()
             } catch (e: Exception) {
@@ -200,26 +264,32 @@ class UserProfileRepository(
                 gson.fromJson(dietaryPreferences, Array<String>::class.java).toList()
             } catch (e: Exception) {
                 emptyList()
-            }
+            },
+            isOnboardingCompleted = isOnboardingCompleted
         )
     }
 }
 
 /**
- * 用户档案领域模型
+ * 用户档案领域模型 - 增强版
  */
 data class UserProfile(
     val nickname: String? = null,  // 用户昵称
     val age: Int,
     val gender: String = "male",  // male/female
+    val birthDate: String? = null,  // 出生日期 yyyy-MM-dd
     val height: Float,  // cm
     val weight: Float,  // kg
     val bmi: Float,
     val activityLevel: String = "moderate",  // sedentary/light/moderate/active/very_active
     val healthGoal: String = "maintain",  // lose_weight/gain_muscle/maintain
     val targetWeight: Float? = null,  // 目标体重 kg
+    val targetDate: String? = null,  // 目标日期 yyyy-MM-dd
+    val dietType: String = "omnivore",  // omnivore/vegetarian/vegan/low_carb/keto/mediterranean
+    val allergens: List<String> = emptyList(),  // ["gluten", "dairy", "nuts"]
     val healthConditions: List<String>,
-    val dietaryPreferences: List<String>
+    val dietaryPreferences: List<String>,
+    val isOnboardingCompleted: Boolean = false
 ) {
     /**
      * 计算每日热量目标 (基于 Mifflin-St Jeor 公式)
@@ -253,3 +323,13 @@ data class UserProfile(
         }
     }
 }
+
+/**
+ * 体重记录领域模型
+ */
+data class WeightEntry(
+    val id: String,
+    val weight: Float,
+    val note: String? = null,
+    val recordedAt: Long
+)

@@ -32,9 +32,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.Image
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -51,6 +54,7 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
 private const val TAG = "MainActivity"
+private const val SCREEN_TIMEOUT_MS = 30000L  // 30秒直接熄屏
 
 /**
  * 眼镜端主界面（瘦客户端）
@@ -60,6 +64,7 @@ private const val TAG = "MainActivity"
  * - 接收手机返回的识别结果并显示
  * - 5分钟定时器自动拍照
  * - AR显示 + TTS播报
+ * - 15秒无操作自动熄屏（省电）
  */
 class MainActivity : ComponentActivity() {
 
@@ -73,7 +78,21 @@ class MainActivity : ComponentActivity() {
     private var autoMonitorJob: Job? = null
     private var mealTimerJob: Job? = null  // 用餐计时器
     private var resultAutoHideJob: Job? = null  // 结果自动隐藏
+    private var recognitionTimeoutJob: Job? = null  // 识别超时计时器
+    private var screenTimeoutJob: Job? = null  // 屏幕熄灭计时器
     private var lastFoodDetected = false  // 上次是否识别到餐品
+    private var currentRetryCount = 0  // 当前重试次数
+    private var isWaitingForResult = false  // 是否正在等待识别结果
+    private var isScreenOff = false  // 屏幕是否已熄灭
+     private var endMealCountdownJob: Job? = null  // 结束用餐倒计时任务
+     private var isEndMealPending = false  // 是否正在等待结束用餐确认
+
+     private var lastResultOverlayJob: Job? = null
+
+     private var lastResultFoodName = ""
+     private var lastResultCalories = 0
+     private var lastResultSuggestion = ""
+
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -85,12 +104,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // 永不熄屏
+        // 初始保持屏幕常亮，之后通过计时器控制熄屏
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         
         requestPermissionsIfNeeded()
         initializeManagers()
         startBatteryMonitor()
+        
+        // 启动屏幕熄灭计时器（15秒无操作后熄屏）
+        startScreenTimeout()
         
         setContent {
             RokidTheme {
@@ -135,13 +157,97 @@ class MainActivity : ComponentActivity() {
         autoMonitorJob?.cancel()
         mealTimerJob?.cancel()
         resultAutoHideJob?.cancel()
+        recognitionTimeoutJob?.cancel()
+        screenTimeoutJob?.cancel()
         pendingClickJob?.cancel()
+        endMealCountdownJob?.cancel()
+        lastResultOverlayJob?.cancel()
         cameraManager.release()
         rokidManager.release()
         // 不要释放蓝牙管理器！它们是 Application 级别的单例
         // bluetoothSender.release()
         // bluetoothReceiver.release()
         Log.d(TAG, "Activity onDestroy，蓝牙连接保持")
+    }
+    
+    /**
+     * 启动屏幕熄灭计时器（15秒无操作后熄屏）
+     */
+    private fun startScreenTimeout() {
+        // 用餐监测中不熄屏
+        if (isInMealSession) {
+            Log.d(TAG, "用餐监测中，跳过熄屏计时")
+            return
+        }
+        
+        screenTimeoutJob?.cancel()
+        screenTimeoutJob = lifecycleScope.launch {
+            delay(SCREEN_TIMEOUT_MS)
+            if (!isInMealSession && !uiState.isProcessing.value) {
+                turnOffScreen()
+            }
+        }
+    }
+    
+    /**
+     * 重置屏幕熄灭计时器（有用户操作时调用）
+     */
+    private fun resetScreenTimeout() {
+        // 如果屏幕已熄灭，先唤醒
+        if (isScreenOff) {
+            turnOnScreen()
+        }
+        // 重新开始计时
+        startScreenTimeout()
+    }
+    
+    /**
+     * 熄灭屏幕
+     * 
+     * 30秒无操作后，移除 KEEP_SCREEN_ON 标志，让系统自动熄屏
+     * 不再手动设置亮度，完全依赖系统的自动熄屏机制
+     */
+    private fun turnOffScreen() {
+        if (isScreenOff) return
+        
+        Log.d(TAG, "30秒无操作，允许系统自动熄屏")
+        isScreenOff = true
+        uiState.isScreenOff.value = true
+        
+        // 移除 KEEP_SCREEN_ON 标志，允许系统自动熄屏
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        
+        // 不再手动设置亮度，让系统自行处理熄屏
+    }
+    
+    /**
+     * 唤醒屏幕
+     * 
+     * 不再手动设置亮度，只恢复 KEEP_SCREEN_ON 标志
+     */
+    private fun turnOnScreen() {
+        if (!isScreenOff) return
+        
+        Log.d(TAG, "唤醒屏幕")
+        isScreenOff = false
+        uiState.isScreenOff.value = false
+        
+        // 保持屏幕常亮（直到下次计时器触发）
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        
+        // 尝试唤醒屏幕
+        try {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+            @Suppress("DEPRECATION")
+            val wakeLock = powerManager?.newWakeLock(
+                android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                "viseat:wakeup"
+            )
+            wakeLock?.acquire(1000)  // 1秒后自动释放
+            wakeLock?.release()
+        } catch (e: Exception) {
+            Log.w(TAG, "唤醒屏幕失败", e)
+        }
     }
 
     /**
@@ -165,6 +271,9 @@ class MainActivity : ComponentActivity() {
     private val SWIPE_THRESHOLD = 100f  // 滑动阈值
     
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        // 任何触摸操作都重置熄屏计时器
+        resetScreenTimeout()
+        
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
                 touchStartX = event.x
@@ -188,6 +297,13 @@ class MainActivity : ComponentActivity() {
                         Log.d(TAG, "不在用餐中，忽略右滑")
                     }
                 }
+
+                if (deltaX < -SWIPE_THRESHOLD && Math.abs(deltaX) > Math.abs(deltaY)) {
+                    Log.d(TAG, "检测到前滑手势")
+                    handleForwardSwipe()
+                    return true
+                }
+
                 return false
             }
         }
@@ -196,12 +312,17 @@ class MainActivity : ComponentActivity() {
     
     // Rokid 触控板手势通过 GenericMotionEvent 传递
     override fun onGenericMotionEvent(event: MotionEvent): Boolean {
+        // 任何触控板操作都重置熄屏计时器
+        resetScreenTimeout()
         Log.d(TAG, "GenericMotion: action=${event.action}, x=${event.x}, y=${event.y}")
         return super.onGenericMotionEvent(event)
     }
     
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         if (event.repeatCount > 0) return true  // 忽略重复按键
+        
+        // 任何按键操作都重置熄屏计时器
+        resetScreenTimeout()
         
         return when (keyCode) {
             KeyEvent.KEYCODE_VOLUME_UP,
@@ -243,25 +364,178 @@ class MainActivity : ComponentActivity() {
     }
     
     /**
-     * 处理点击（单击拍照）
+     * 处理点击
+     * 
+     * 交互逻辑：
+     * - 非用餐中：单击拍照识别
+     * - 用餐中：
+     *   - 首次点击：开始3秒倒计时，提示"3秒后自动结束用餐，取消请再次点击"
+     *   - 倒计时中再次点击：取消结束用餐
+     *   - 倒计时结束：自动拍照并结束用餐
      */
     private fun handleClick() {
-        // 单击：拍照识别
-        handleManualCapture()
+        if (isInMealSession) {
+            // 用餐中：处理结束用餐逻辑
+            if (isEndMealPending) {
+                // 正在倒计时中，再次点击取消结束用餐
+                Log.d(TAG, "用餐中再次点击，取消结束用餐")
+                cancelEndMealCountdown()
+            } else {
+                // 首次点击，开始3秒倒计时
+                Log.d(TAG, "用餐中点击，开始3秒倒计时")
+                startEndMealCountdown()
+            }
+        } else {
+            // 非用餐中：单击拍照识别
+            handleManualCapture()
+        }
+    }
+    
+    /**
+     * 开始结束用餐倒计时（3秒）
+     */
+    private fun startEndMealCountdown() {
+        isEndMealPending = true
+        uiState.endMealCountdown.value = 3
+        uiState.statusMessage.value = "3秒后自动结束用餐，取消请再次点击"
+        rokidManager.speak("3秒后结束用餐，取消请再次点击")
+        
+        endMealCountdownJob?.cancel()
+        endMealCountdownJob = lifecycleScope.launch {
+            // 倒计时 3 -> 2 -> 1 -> 0
+            for (i in 3 downTo 1) {
+                uiState.endMealCountdown.value = i
+                uiState.statusMessage.value = "${i}秒后自动结束用餐，取消请再次点击"
+                delay(1000)
+            }
+            
+            // 倒计时结束，执行结束用餐
+            uiState.endMealCountdown.value = 0
+            isEndMealPending = false
+            Log.d(TAG, "倒计时结束，执行结束用餐")
+            handleEndMealWithPhoto()
+        }
+    }
+    
+    /**
+     * 取消结束用餐倒计时
+     */
+    private fun cancelEndMealCountdown() {
+        endMealCountdownJob?.cancel()
+        isEndMealPending = false
+        uiState.endMealCountdown.value = 0
+        uiState.statusMessage.value = "已取消结束用餐"
+        rokidManager.speak("已取消")
+        
+        // 2秒后恢复正常状态提示
+        lifecycleScope.launch {
+            delay(2000)
+            if (isInMealSession && !isEndMealPending) {
+                uiState.statusMessage.value = "用餐监测中"
+            }
+        }
+    }
+    
+    /**
+     * 结束用餐并拍摄最后一张照片
+     */
+    private fun handleEndMealWithPhoto() {
+        if (!isInMealSession) {
+            Log.w(TAG, "当前没有进行中的用餐会话")
+            return
+        }
+        
+        lifecycleScope.launch {
+             // 停止自动监测
+             autoMonitorJob?.cancel()
+             mealTimerJob?.cancel()
+             recognitionTimeoutJob?.cancel()
+             isWaitingForResult = false
+
+            
+            // 更新状态
+            uiState.statusMessage.value = "正在拍摄最后一张..."
+            rokidManager.speak("正在结束用餐")
+            
+            // 拍摄最后一张照片并发送
+            try {
+                val bitmap = suspendCoroutine<Bitmap?> { cont ->
+                    cameraManager.takePicture { bmp, _ -> cont.resume(bmp) }
+                }
+                
+                if (bitmap != null) {
+             val outputStream = ByteArrayOutputStream()
+             bitmap.compress(Bitmap.CompressFormat.JPEG, Config.IMAGE_QUALITY, outputStream)
+             var imageData = outputStream.toByteArray()
+
+             if (imageData.size > Config.IMAGE_MAX_BYTES) {
+                 val fallback = Bitmap.createScaledBitmap(bitmap, Config.IMAGE_FALLBACK_WIDTH, Config.IMAGE_FALLBACK_HEIGHT, true)
+                 val fallbackStream = ByteArrayOutputStream()
+                 fallback.compress(Bitmap.CompressFormat.JPEG, (Config.IMAGE_QUALITY - 8).coerceAtLeast(70), fallbackStream)
+                 imageData = fallbackStream.toByteArray()
+                 fallback.recycle()
+             }
+
+             val sent = bluetoothSender.sendImage(imageData, "jpeg", isManualCapture = true, isEndMealCapture = true)
+             if (sent) {
+                 Log.d(TAG, "最后一张照片已发送（结束用餐模式）")
+             } else {
+                 Log.w(TAG, "最后一张照片发送失败（结束用餐模式）")
+             }
+                } else {
+                    Log.w(TAG, "拍摄最后一张照片失败，bitmap为空")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "拍摄最后一张照片失败", e)
+            }
+            
+             delay(500)
+             handleEndMeal()
+        }
     }
     
     /**
      * 重复播报上次结果
      */
-    private fun repeatLastResult() {
-        val foodName = uiState.foodName.value
-        val calories = uiState.calories.value
-        if (foodName.isNotBlank()) {
-            rokidManager.speak("$foodName，${calories}千卡")
-        } else {
-            rokidManager.speak("暂无识别结果")
-        }
-    }
+     private fun repeatLastResult() {
+         val foodName = uiState.foodName.value
+         val calories = uiState.calories.value
+         if (foodName.isNotBlank()) {
+             rokidManager.speak("$foodName，${calories}千卡")
+         } else {
+             rokidManager.speak("暂无识别结果")
+         }
+     }
+
+     private fun handleForwardSwipe() {
+         val screenState = getScreenState(uiState)
+         val allowed = screenState == ScreenState.MONITORING || screenState == ScreenState.IDLE
+
+         if (!allowed) {
+             return
+         }
+
+         if (uiState.showLastResult.value) {
+             uiState.showLastResult.value = false
+             lastResultOverlayJob?.cancel()
+             return
+         }
+
+         if (lastResultFoodName.isBlank()) {
+             return
+         }
+
+         uiState.lastFoodName.value = lastResultFoodName
+         uiState.lastCalories.value = lastResultCalories
+         uiState.lastSuggestion.value = lastResultSuggestion
+         uiState.showLastResult.value = true
+
+         lastResultOverlayJob?.cancel()
+         lastResultOverlayJob = lifecycleScope.launch {
+             delay(5000)
+             uiState.showLastResult.value = false
+         }
+     }
     
     /**
      * 取消当前操作
@@ -311,6 +585,19 @@ class MainActivity : ComponentActivity() {
         uiState.phoneConnected.value = isConnectedNow
         if (isConnectedNow) {
             uiState.appPhase.value = AppPhase.READY
+        }
+        
+        // 延迟再次检查连接状态（等待探测完成）
+        // 这样即使初始状态是未连接，探测成功后也会更新 UI
+        lifecycleScope.launch {
+            delay(1500)  // 等待探测完成
+            val connectedAfterProbe = bluetoothSender.isConnected()
+            Log.d(TAG, "延迟检查连接状态: $connectedAfterProbe")
+            if (connectedAfterProbe && !uiState.phoneConnected.value) {
+                uiState.phoneConnected.value = true
+                uiState.appPhase.value = AppPhase.READY
+                Log.d(TAG, "探测后更新连接状态为已连接")
+            }
         }
         
         // 监听蓝牙连接状态
@@ -380,8 +667,10 @@ class MainActivity : ComponentActivity() {
                     uiState.mealTotalFat.value = mealTotalFat.toInt()
                     uiState.mealSummaryMessage.value = generateMealSummary(status.totalConsumed)
                     
-                    // 显示用餐总结
-                    uiState.showMealSummary.value = true
+                     // 显示用餐总结
+                     resultAutoHideJob?.cancel()
+                     uiState.showMealSummary.value = true
+
                     
                     // 播报总结
                     val ttsText = "本餐共摄入${status.totalConsumed.toInt()}千卡。${uiState.mealSummaryMessage.value}"
@@ -397,13 +686,18 @@ class MainActivity : ComponentActivity() {
                     // 恢复屏幕常亮
                     window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                     
-                    // 10 秒后自动关闭总结页面
-                    lifecycleScope.launch {
-                        delay(10000)
-                        uiState.showMealSummary.value = false
-                        uiState.foodName.value = ""
-                        uiState.calories.value = 0
-                    }
+                     // 10 秒后自动关闭总结页面
+                     lifecycleScope.launch {
+                         delay(10000)
+                         uiState.showMealSummary.value = false
+                         uiState.foodName.value = ""
+                         uiState.calories.value = 0
+                         uiState.protein.value = 0
+                         uiState.carbs.value = 0
+                         uiState.fat.value = 0
+                         uiState.suggestion.value = ""
+                     }
+
                     
                     Log.d(TAG, "用餐会话已结束，恢复屏幕常亮")
                 }
@@ -422,6 +716,13 @@ class MainActivity : ComponentActivity() {
             handleRemoteCapture()
         }
         
+        // 监听个性化建议（手机端同步的健康建议）
+        bluetoothReceiver.setPersonalizedTipListener { content, category ->
+            Log.d(TAG, "收到个性化建议: [$category] $content")
+            // 更新个性化建议，下次拍照时会显示
+            uiState.personalizedTip.value = content
+        }
+        
         Log.d(TAG, "所有管理器初始化完成")
     }
     
@@ -437,16 +738,20 @@ class MainActivity : ComponentActivity() {
 
     /**
      * 处理用户主动拍照
-     * - 重置自动拍照计时器
-     * - 标记为主动拍照（评估更仔细）
+     * 
+     * 注意：用餐中禁止手动拍照，只允许 5 分钟自动拍照
+     * 用餐中的点击操作会触发结束用餐（在 handleClick 中处理）
      */
     private fun handleManualCapture() {
+        // 用餐中禁止手动拍照
+        if (isInMealSession) {
+            Log.d(TAG, "用餐中禁止手动拍照，请点击结束用餐")
+            uiState.statusMessage.value = "用餐监测中，点击结束用餐"
+            rokidManager.speak("用餐监测中，点击可结束用餐")
+            return
+        }
+        
         lifecycleScope.launch {
-            // 重置自动拍照计时器
-            if (isInMealSession) {
-                restartAutoMonitorTimer()
-            }
-            
             captureAndSend(isManualCapture = true)
         }
     }
@@ -465,6 +770,7 @@ class MainActivity : ComponentActivity() {
      * 1. 发送结束指令到手机端
      * 2. 等待手机端返回会话状态（通过 sessionStatusListener）
      * 3. 手机端返回后会触发 UI 更新
+     * 4. 如果超时或失败，使用本地已有数据结束用餐
      */
     private fun handleEndMeal() {
         if (!isInMealSession) {
@@ -473,8 +779,12 @@ class MainActivity : ComponentActivity() {
         }
         
         lifecycleScope.launch {
-            // 停止自动监测
-            autoMonitorJob?.cancel()
+             // 停止自动监测和超时计时器
+             autoMonitorJob?.cancel()
+             mealTimerJob?.cancel()
+             recognitionTimeoutJob?.cancel()
+             isWaitingForResult = false
+
             
             // 更新状态为"正在结束"
             uiState.statusMessage.value = "正在结束用餐..."
@@ -487,20 +797,79 @@ class MainActivity : ComponentActivity() {
                 // 手机端会通过 sessionStatusListener 返回结果
                 // UI 更新会在 sessionStatusListener 的回调中处理
                 
-                // 设置超时：10秒内没有响应则返回监测页面
+                // 设置超时：10秒内没有响应则使用本地数据结束
                 delay(10000)
                 if (isInMealSession) {
-                    Log.w(TAG, "结束用餐响应超时，返回监测页面")
-                    uiState.statusMessage.value = "结束超时，继续监测"
-                    rokidManager.speak("结束用餐超时，继续监测中")
+                    Log.w(TAG, "结束用餐响应超时，使用本地数据结束用餐")
+                    forceEndMealWithLocalData()
                 }
             } else {
-                Log.e(TAG, "发送结束用餐指令失败")
-                uiState.statusMessage.value = "结束失败，继续监测"
-                rokidManager.speak("结束用餐失败，继续监测中")
-                // 不显示总结，保持在监测状态
+                Log.e(TAG, "发送结束用餐指令失败，使用本地数据结束用餐")
+                // 通信失败，使用本地已有数据结束用餐
+                forceEndMealWithLocalData()
             }
         }
+    }
+    
+    /**
+     * 强制使用本地数据结束用餐
+     * 
+     * 当手机端通信失败或超时时调用，使用眼镜端已累计的数据显示用餐总结
+     */
+    private fun forceEndMealWithLocalData() {
+        Log.d(TAG, "强制使用本地数据结束用餐，累计热量: ${mealTotalCalories.toInt()}kcal")
+        
+        // 停止所有计时器
+        autoMonitorJob?.cancel()
+        mealTimerJob?.cancel()
+        recognitionTimeoutJob?.cancel()
+        isWaitingForResult = false
+        
+        // 计算用餐时长
+        val mealDurationMs = System.currentTimeMillis() - mealStartTime
+        val mealDurationMinutes = (mealDurationMs / 60000).toInt()
+        
+        // 更新总结数据（使用本地累计数据）
+        uiState.mealDurationMinutes.value = mealDurationMinutes
+        uiState.mealSummaryCalories.value = mealTotalCalories.toInt()
+        uiState.mealTotalProtein.value = mealTotalProtein.toInt()
+        uiState.mealTotalCarbs.value = mealTotalCarbs.toInt()
+        uiState.mealTotalFat.value = mealTotalFat.toInt()
+        uiState.mealSummaryMessage.value = generateMealSummary(mealTotalCalories)
+        
+        // 更新状态
+        isInMealSession = false
+        uiState.sessionStatus.value = "空闲"
+        uiState.showMealSummary.value = true
+        
+        // 播报总结
+        val ttsText = if (mealTotalCalories > 0) {
+            "本餐共摄入${mealTotalCalories.toInt()}千卡。${uiState.mealSummaryMessage.value}"
+        } else {
+            "用餐已结束"
+        }
+        rokidManager.speak(ttsText)
+        
+        // 重置累计数据
+        val savedCalories = mealTotalCalories  // 保存用于日志
+        mealTotalCalories = 0.0
+        mealTotalProtein = 0.0
+        mealTotalCarbs = 0.0
+        mealTotalFat = 0.0
+        uiState.mealCurrentCalories.value = 0
+        
+        // 恢复屏幕常亮
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        
+        // 10秒后自动关闭总结页面
+        lifecycleScope.launch {
+            delay(10000)
+            uiState.showMealSummary.value = false
+            uiState.foodName.value = ""
+            uiState.calories.value = 0
+        }
+        
+        Log.d(TAG, "用餐已强制结束（本地数据），总热量: ${savedCalories.toInt()}kcal，时长: ${mealDurationMinutes}分钟")
     }
     
     /**
@@ -550,6 +919,93 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+    
+    /**
+     * 启动识别超时计时器（20秒）
+     * 
+     * @param isManualCapture 是否为手动拍照
+     */
+    private fun startRecognitionTimeout(isManualCapture: Boolean) {
+        recognitionTimeoutJob?.cancel()
+        isWaitingForResult = true
+        
+        recognitionTimeoutJob = lifecycleScope.launch {
+            delay(Config.RECOGNITION_TIMEOUT_MS)
+            
+            if (isWaitingForResult) {
+                Log.w(TAG, "识别超时（${Config.RECOGNITION_TIMEOUT_MS / 1000}秒），isInMealSession=$isInMealSession")
+                handleRecognitionTimeout(isManualCapture)
+            }
+        }
+    }
+    
+    /**
+     * 取消识别超时计时器
+     */
+    private fun cancelRecognitionTimeout() {
+        recognitionTimeoutJob?.cancel()
+        isWaitingForResult = false
+        currentRetryCount = 0
+    }
+    
+    /**
+     * 处理识别超时
+     * 
+     * 逻辑：
+     * - 非用餐中：返回上一级页面，提示"分析失败请重试"
+     * - 用餐监测中：自动重拍并上传（最多重试3次）
+     */
+    private fun handleRecognitionTimeout(isManualCapture: Boolean) {
+        isWaitingForResult = false
+        
+        // 立即停止所有动画和预览
+        uiState.showFullscreenPreview.value = false
+        uiState.showThumbnail.value = false
+        uiState.capturedThumbnail.value = null
+        
+        if (isInMealSession) {
+            // 用餐监测中：自动重拍
+            currentRetryCount++
+            
+            if (currentRetryCount <= Config.MAX_RETRY_COUNT) {
+                Log.d(TAG, "用餐中识别超时，自动重拍（第${currentRetryCount}次）")
+                uiState.statusMessage.value = "分析超时，自动重拍..."
+                rokidManager.speak("分析超时，正在重拍")
+                
+                // 自动重拍
+                lifecycleScope.launch {
+                    delay(500)  // 短暂延迟
+                    captureAndSend(isManualCapture = false)
+                }
+            } else {
+                // 超过最大重试次数，恢复监测状态
+                Log.w(TAG, "用餐中识别超时，已达最大重试次数")
+                currentRetryCount = 0
+                uiState.processingPhase.value = ProcessingPhase.IDLE
+                uiState.isProcessing.value = false
+                uiState.statusMessage.value = "分析失败，继续监测"
+                rokidManager.speak("分析失败，继续监测中")
+            }
+        } else {
+            // 非用餐中：返回初始状态，提示失败
+            Log.d(TAG, "非用餐中识别超时，返回初始状态")
+            currentRetryCount = 0
+            uiState.processingPhase.value = ProcessingPhase.IDLE
+            uiState.isProcessing.value = false
+            uiState.foodName.value = ""
+            uiState.calories.value = 0
+            uiState.statusMessage.value = "分析失败，请重试"
+            rokidManager.speak("分析失败，请重试")
+            
+            // 3秒后恢复初始提示
+            lifecycleScope.launch {
+                delay(3000)
+                if (!uiState.isProcessing.value && !isInMealSession) {
+                    uiState.statusMessage.value = "点击拍照识别食物"
+                }
+            }
+        }
+    }
 
     /**
      * 重置自动拍照计时器（用户主动拍照后重置）
@@ -575,28 +1031,31 @@ class MainActivity : ComponentActivity() {
     /**
      * 启动结果自动隐藏计时器（15秒后隐藏）
      */
-    private fun startResultAutoHideTimer() {
-        resultAutoHideJob?.cancel()
-        resultAutoHideJob = lifecycleScope.launch {
-            delay(15000)
-            // 15秒后隐藏结果（无论是否在用餐中）
-            if (uiState.foodName.value.isNotEmpty()) {
-                uiState.foodName.value = ""
-                uiState.calories.value = 0
-                uiState.suggestion.value = ""
-                Log.d(TAG, "结果已自动隐藏")
-            }
-        }
-    }
+     private fun startResultAutoHideTimer() {
+         resultAutoHideJob?.cancel()
+         resultAutoHideJob = lifecycleScope.launch {
+             delay(15000)
+             if (uiState.foodName.value.isNotEmpty()) {
+                 uiState.foodName.value = ""
+                 uiState.calories.value = 0
+                 uiState.protein.value = 0
+                 uiState.carbs.value = 0
+                 uiState.fat.value = 0
+                 uiState.suggestion.value = ""
+                 Log.d(TAG, "结果已自动隐藏")
+             }
+         }
+     }
 
     /**
      * 拍照并发送到手机
      * 
-     * 流程：
-     * 1. 显示取景动画（手动拍照时）
-     * 2. 拍照
-     * 3. 发送到手机
-     * 4. 等待手机端发送的真实处理阶段状态
+     * 流程（取景框 + 即时反馈优化）：
+     * 1. 显示取景框动画（1秒）- 让用户知道正在对焦/取景
+     * 2. 拍照 + 播放快门音效
+     * 3. 显示缩略图 + 分析动画 - 降低等待感
+     * 4. 后台同时发送到手机并等待结果
+     * 5. 结果返回后播报完整信息
      * 
      * @param isManualCapture true=用户主动拍照，false=自动拍照（静默模式）
      */
@@ -604,25 +1063,38 @@ class MainActivity : ComponentActivity() {
         if (!bluetoothSender.isConnected()) {
             if (isManualCapture) {
                 uiState.statusMessage.value = "未连接手机"
+                rokidManager.speak("未连接手机")
             }
             return
         }
         
-        // 自动拍照时静默处理，不显示处理动画
-        if (isManualCapture) {
-            // 阶段1: 取景中
-            uiState.isProcessing.value = true
-            uiState.processingPhase.value = ProcessingPhase.CAPTURING
-            uiState.statusMessage.value = "取景中..."
-            
-            // 短暂显示取景框动画
-            delay(200)
-        } else {
+        // 自动拍照时静默处理
+        if (!isManualCapture) {
             Log.d(TAG, "自动拍照开始（静默模式）")
         }
         
         try {
-            // 拍照
+            // ========== 阶段1：显示取景框动画（手动拍照时） ==========
+            if (isManualCapture) {
+                // 标记已经进行过拍照（后续不再显示完整 Logo）
+                uiState.hasEverCaptured.value = true
+                uiState.isFirstLaunch.value = false
+                
+                uiState.isProcessing.value = true
+                uiState.processingPhase.value = ProcessingPhase.CAPTURING
+                uiState.statusMessage.value = "取景中..."
+                uiState.showFullscreenPreview.value = false
+                uiState.showThumbnail.value = false
+                
+                // 优先使用个性化建议，否则使用随机提示
+                uiState.currentTip.value = uiState.personalizedTip.value 
+                    ?: HealthTips.getRandomTip()
+                
+                // 取景框动画显示1秒
+                delay(1000)
+            }
+            
+            // ========== 阶段2：拍照 ==========
             val bitmap = suspendCoroutine<Bitmap?> { cont ->
                 cameraManager.takePicture { bmp, _ -> cont.resume(bmp) }
             }
@@ -639,34 +1111,83 @@ class MainActivity : ComponentActivity() {
                 return
             }
             
-            // 拍照成功 - 手动拍照时播放快门音效
+            // ========== 阶段3：即时反馈 - 显示缩略图 ==========
             if (isManualCapture) {
+                // 播放快门音效
                 playShutterSound()
                 
-                // 阶段2: 发送中
-                uiState.processingPhase.value = ProcessingPhase.SENDING
-                uiState.statusMessage.value = "发送中..."
+                // 生成预览图（用于缩略图显示）
+                val previewMaxSize = 300
+                val previewScale = minOf(
+                    previewMaxSize.toFloat() / bitmap.width,
+                    previewMaxSize.toFloat() / bitmap.height,
+                    1f
+                )
+                val previewWidth = (bitmap.width * previewScale).toInt()
+                val previewHeight = (bitmap.height * previewScale).toInt()
+                val preview = if (previewScale < 1f) {
+                    Bitmap.createScaledBitmap(bitmap, previewWidth, previewHeight, true)
+                } else {
+                    bitmap
+                }
+                
+                // 保存预览图并显示全屏预览 3 秒
+                uiState.capturedThumbnail.value = preview
+                uiState.showFullscreenPreview.value = true
+                uiState.showThumbnail.value = false
+                uiState.statusMessage.value = "已拍摄"
+                
+                // 播报"已拍摄"，然后追加播报健康小提示
+                rokidManager.speak("已拍摄，正在分析")
+                // 追加播报当前的健康小提示（不打断"已拍摄"）
+                rokidManager.speakAppend(uiState.currentTip.value)
+                
+                // 全屏预览 3 秒后切换到分析动画
+                delay(3000)
+                uiState.showFullscreenPreview.value = false
+                uiState.showThumbnail.value = true
+                uiState.processingPhase.value = ProcessingPhase.ANALYZING_FOOD
+                uiState.statusMessage.value = "正在分析..."
             }
             
-            // 压缩为 JPEG
             val outputStream = ByteArrayOutputStream()
             bitmap.compress(Bitmap.CompressFormat.JPEG, Config.IMAGE_QUALITY, outputStream)
-            val imageData = outputStream.toByteArray()
+            var imageData = outputStream.toByteArray()
+
+            if (imageData.size > Config.IMAGE_MAX_BYTES) {
+                val fallback = Bitmap.createScaledBitmap(bitmap, Config.IMAGE_FALLBACK_WIDTH, Config.IMAGE_FALLBACK_HEIGHT, true)
+                val fallbackStream = ByteArrayOutputStream()
+                fallback.compress(Bitmap.CompressFormat.JPEG, (Config.IMAGE_QUALITY - 8).coerceAtLeast(70), fallbackStream)
+                imageData = fallbackStream.toByteArray()
+                fallback.recycle()
+            }
             
-            // 通过蓝牙发送到手机
             val sent = bluetoothSender.sendImage(imageData, "jpeg", isManualCapture)
             
             if (sent) {
-                // 发送成功，等待手机端发送的真实处理阶段状态
-                Log.d(TAG, "图片已发送（${if (isManualCapture) "手动" else "自动"}），等待手机端处理...")
+                // 发送成功，启动超时计时器
+                Log.d(TAG, "图片已发送（${if (isManualCapture) "手动" else "自动"}），等待识别结果...")
+                startRecognitionTimeout(isManualCapture)
+                
+                // 更新状态提示（更友好的文案）
+                if (isManualCapture) {
+                    uiState.statusMessage.value = "正在分析美食..."
+                }
             } else {
                 if (isManualCapture) {
                     uiState.processingPhase.value = ProcessingPhase.IDLE
                     uiState.isProcessing.value = false
                     uiState.statusMessage.value = "发送失败"
-                    rokidManager.speak("发送失败")
+                    rokidManager.speak("发送失败，请重试")
                 } else {
                     Log.w(TAG, "自动拍照发送失败")
+                    // 用餐中自动拍照失败，尝试重拍
+                    if (isInMealSession) {
+                        lifecycleScope.launch {
+                            delay(2000)
+                            captureAndSend(isManualCapture = false)
+                        }
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -675,6 +1196,13 @@ class MainActivity : ComponentActivity() {
                 uiState.processingPhase.value = ProcessingPhase.IDLE
                 uiState.isProcessing.value = false
                 uiState.statusMessage.value = "拍照失败"
+                rokidManager.speak("拍照失败")
+            } else if (isInMealSession) {
+                // 用餐中自动拍照异常，尝试重拍
+                lifecycleScope.launch {
+                    delay(2000)
+                    captureAndSend(isManualCapture = false)
+                }
             }
         }
     }
@@ -707,35 +1235,90 @@ class MainActivity : ComponentActivity() {
      * 6 = 未检测到食物
      */
     private fun handleProcessingPhase(phaseCode: Int, phaseMessage: String) {
+        // 收到处理阶段说明通信正常，重置超时计时器（延长等待时间）
+        if (phaseCode in listOf(
+                Config.ProcessingPhaseCode.UPLOADING,
+                Config.ProcessingPhaseCode.ANALYZING,
+                Config.ProcessingPhaseCode.CALCULATING
+            )) {
+            // 重新启动超时计时器（因为正在处理中）
+            recognitionTimeoutJob?.cancel()
+            recognitionTimeoutJob = lifecycleScope.launch {
+                delay(Config.RECOGNITION_TIMEOUT_MS)
+                if (isWaitingForResult) {
+                    Log.w(TAG, "处理阶段后超时")
+                    handleRecognitionTimeout(true)
+                }
+            }
+        }
+        
         when (phaseCode) {
             Config.ProcessingPhaseCode.UPLOADING -> {
                 uiState.isProcessing.value = true
                 uiState.processingPhase.value = ProcessingPhase.ANALYZING_FOOD
-                uiState.statusMessage.value = phaseMessage
+                uiState.statusMessage.value = "正在上传..."
             }
             Config.ProcessingPhaseCode.ANALYZING -> {
                 uiState.processingPhase.value = ProcessingPhase.ANALYZING_FOOD
-                uiState.statusMessage.value = phaseMessage
+                uiState.statusMessage.value = "正在识别美食..."
             }
             Config.ProcessingPhaseCode.CALCULATING -> {
                 uiState.processingPhase.value = ProcessingPhase.CALCULATING_CALORIES
-                uiState.statusMessage.value = phaseMessage
+                uiState.statusMessage.value = "计算营养成分..."
             }
             Config.ProcessingPhaseCode.COMPLETE -> {
                 // 完成状态会在 handleNutritionResult 中进一步处理
+                cancelRecognitionTimeout()
                 uiState.statusMessage.value = phaseMessage
             }
             Config.ProcessingPhaseCode.ERROR -> {
+                // 取消超时计时器
+                cancelRecognitionTimeout()
+                
+                // 立即停止所有动画和预览
                 uiState.processingPhase.value = ProcessingPhase.IDLE
                 uiState.isProcessing.value = false
+                uiState.showFullscreenPreview.value = false
+                uiState.showThumbnail.value = false
+                uiState.capturedThumbnail.value = null
                 uiState.statusMessage.value = phaseMessage
                 
-                // 清除结果，返回首页
-                uiState.foodName.value = ""
-                uiState.calories.value = 0
+                // 根据错误消息生成具体的 TTS 播报
+                // 手机端会发送具体的错误信息，如"网络连接失败"、"服务器繁忙"等
+                val ttsMessage = when {
+                    phaseMessage.contains("未检测到食物") -> "未识别到餐品，请重新拍照"
+                    phaseMessage.contains("未识别到餐品") -> "未识别到餐品，请重新拍照"
+                    phaseMessage.contains("网络") -> phaseMessage
+                    phaseMessage.contains("超时") -> phaseMessage
+                    phaseMessage.contains("服务器") -> phaseMessage
+                    phaseMessage.contains("上传") -> phaseMessage
+                    else -> "识别失败，请重试"
+                }
                 
-                // 播报错误
-                rokidManager.speak("识别失败，请重试")
+                // 用餐中错误：自动重拍
+                if (isInMealSession) {
+                    currentRetryCount++
+                    if (currentRetryCount <= Config.MAX_RETRY_COUNT) {
+                        Log.d(TAG, "用餐中识别错误，自动重拍（第${currentRetryCount}次）")
+                        // 播报具体错误原因，然后提示正在重拍
+                        rokidManager.speak("$ttsMessage，正在重拍")
+                        lifecycleScope.launch {
+                            delay(1000)
+                            captureAndSend(isManualCapture = false)
+                        }
+                        return
+                    } else {
+                        currentRetryCount = 0
+                        uiState.statusMessage.value = "识别失败，继续监测"
+                        rokidManager.speak("$ttsMessage，继续监测中")
+                    }
+                } else {
+                    // 非用餐中：清除结果，返回首页
+                    uiState.foodName.value = ""
+                    uiState.calories.value = 0
+                    // 播报具体错误原因
+                    rokidManager.speak(ttsMessage)
+                }
                 
                 // 3秒后恢复初始状态
                 lifecycleScope.launch {
@@ -746,11 +1329,38 @@ class MainActivity : ComponentActivity() {
                 }
             }
             Config.ProcessingPhaseCode.NOT_FOOD -> {
+                // 取消超时计时器
+                cancelRecognitionTimeout()
+                
+                // 立即停止所有动画和预览
                 uiState.processingPhase.value = ProcessingPhase.IDLE
                 uiState.isProcessing.value = false
+                uiState.showFullscreenPreview.value = false
+                uiState.showThumbnail.value = false
+                uiState.capturedThumbnail.value = null
                 uiState.statusMessage.value = phaseMessage
-                uiState.showNotFoodWarning.value = true
-                rokidManager.speak("未检测到食物，请重新拍照")
+                
+                // 用餐中未检测到食物：自动重拍
+                if (isInMealSession) {
+                    currentRetryCount++
+                    if (currentRetryCount <= Config.MAX_RETRY_COUNT) {
+                        Log.d(TAG, "用餐中未检测到食物，自动重拍（第${currentRetryCount}次）")
+                        uiState.statusMessage.value = "未检测到食物，自动重拍..."
+                        rokidManager.speak("未检测到食物，正在重拍")
+                        lifecycleScope.launch {
+                            delay(1000)
+                            captureAndSend(isManualCapture = false)
+                        }
+                        return
+                    } else {
+                        currentRetryCount = 0
+                        uiState.statusMessage.value = "未检测到食物，继续监测"
+                        rokidManager.speak("未检测到食物，继续监测中")
+                    }
+                } else {
+                    uiState.showNotFoodWarning.value = true
+                    rokidManager.speak("未检测到食物，请重新拍照")
+                }
                 
                 // 3秒后隐藏警告并恢复状态
                 lifecycleScope.launch {
@@ -767,7 +1377,18 @@ class MainActivity : ComponentActivity() {
     /**
      * 处理从手机接收到的营养结果
      */
-    private fun handleNutritionResult(result: NutritionResult) {
+     private fun handleNutritionResult(result: NutritionResult) {
+         // 取消超时计时器
+         cancelRecognitionTimeout()
+         
+         // 隐藏缩略图（结果已返回）
+         uiState.showThumbnail.value = false
+         uiState.capturedThumbnail.value = null
+
+         uiState.showLastResult.value = false
+         lastResultOverlayJob?.cancel()
+
+        
         // 停止处理动画
         uiState.processingPhase.value = ProcessingPhase.IDLE
         uiState.isProcessing.value = false
@@ -777,15 +1398,15 @@ class MainActivity : ComponentActivity() {
                      && !result.foodName.contains("未识别") 
                      && !result.foodName.contains("非餐品")
         
-        if (!isFood) {
-            // 未识别到餐品
-            lastFoodDetected = false
-            uiState.foodName.value = ""
-            uiState.calories.value = 0
-            uiState.suggestion.value = ""
-            uiState.statusMessage.value = "未识别到餐品"
-            uiState.showNotFoodWarning.value = true
-            rokidManager.speak("未识别到餐品，请重新拍照")
+         if (!isFood) {
+             lastFoodDetected = false
+             uiState.foodName.value = ""
+             uiState.calories.value = 0
+             uiState.suggestion.value = ""
+             uiState.statusMessage.value = "未识别到餐品"
+             uiState.showNotFoodWarning.value = true
+             rokidManager.speak("未识别到餐品，请重新拍照")
+
             
             // 3秒后隐藏警告
             lifecycleScope.launch {
@@ -798,31 +1419,72 @@ class MainActivity : ComponentActivity() {
         // 识别到餐品
         lastFoodDetected = true
         uiState.showNotFoodWarning.value = false
-        
-        // 更新 UI 状态
+
+        val suggestionText = result.suggestion.ifBlank { uiState.personalizedTip.value ?: "" }
+
         uiState.foodName.value = result.foodName
         uiState.calories.value = result.calories.toInt()
         uiState.protein.value = result.protein.toInt()
         uiState.carbs.value = result.carbs.toInt()
         uiState.fat.value = result.fat.toInt()
-        uiState.suggestion.value = result.suggestion
+        uiState.suggestion.value = suggestionText
+
+        lastResultFoodName = result.foodName
+        lastResultCalories = result.calories.toInt()
+        lastResultSuggestion = suggestionText
+        uiState.lastFoodName.value = lastResultFoodName
+        uiState.lastCalories.value = lastResultCalories
+        uiState.lastSuggestion.value = lastResultSuggestion
+
+
         
-        // 不再主动发送开始用餐指令
-        // 手机端会根据食物类型（meal/snack/beverage等）决定是否开始用餐监测
-        // 如果是正餐，手机端会通过 sessionStatusListener 发送 "active" 状态
+        // 根据 category 判断是否进入用餐监测
+        val isMeal = result.category == "meal"
+        Log.d(TAG, "食物类型: ${result.category}, 是否正餐: $isMeal, 当前用餐状态: $isInMealSession")
         
-        if (!isInMealSession) {
-            uiState.statusMessage.value = "已识别"
+        if (!isInMealSession && isMeal) {
+            // 首次识别到正餐，进入用餐监测模式
+            Log.d(TAG, "检测到正餐，进入用餐监测模式")
+            isInMealSession = true
+            mealStartTime = System.currentTimeMillis()
+            uiState.sessionStatus.value = "用餐中"
+            uiState.mealElapsedSeconds.value = 0
             
-            // TTS 播报
-            val ttsText = "${result.foodName}，${result.calories.toInt()}千卡"
+            // 重置累计数据
+            mealTotalCalories = 0.0
+            mealTotalProtein = 0.0
+            mealTotalCarbs = 0.0
+            mealTotalFat = 0.0
+            
+            // 启动用餐计时器和自动监测
+            startMealTimer()
+            startAutoMonitorTimer()
+            
+            // 允许屏幕自动熄灭（省电）
+            window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            
+            uiState.statusMessage.value = "用餐监测已开始"
+            // 播报时包含建议信息
+            val ttsText = if (suggestionText.isNotBlank()) {
+                "${result.foodName}，${result.calories.toInt()}千卡。${suggestionText}。开始用餐监测"
+            } else {
+                "${result.foodName}，${result.calories.toInt()}千卡，开始用餐监测"
+            }
+            rokidManager.speak(ttsText)
+        } else if (!isInMealSession) {
+            // 非正餐，只显示结果（包含建议）
+            uiState.statusMessage.value = "已识别"
+            val ttsText = if (suggestionText.isNotBlank()) {
+                "${result.foodName}，${result.calories.toInt()}千卡。${suggestionText}"
+            } else {
+                "${result.foodName}，${result.calories.toInt()}千卡"
+            }
             rokidManager.speak(ttsText)
         } else {
+            // 用餐中，更新数据
             uiState.statusMessage.value = "已更新"
-            
-            // TTS 播报（简洁版）
-            val ttsText = if (result.suggestion.isNotBlank()) {
-                "${result.foodName}，${result.calories.toInt()}千卡。${result.suggestion}"
+            val ttsText = if (suggestionText.isNotBlank()) {
+                "${result.foodName}，${result.calories.toInt()}千卡。${suggestionText}"
             } else {
                 "${result.foodName}，${result.calories.toInt()}千卡"
             }
@@ -891,21 +1553,47 @@ class MainActivity : ComponentActivity() {
 // 字体规范: 一级32sp, 二级24sp, 三级20sp, 四级18sp, 五级16sp
 // 圆角: 12dp, 描边: 1.5dp
 
+/**
+ * Rokid AR眼镜颜色规范
+ * 
+ * 核心规则：
+ * - 只能使用 #40FF5E 绿色
+ * - 通过透明度区分层次（40%、80%、100%）
+ * - 禁止使用渐变和大面积高亮
+ * - 禁止使用其他颜色（红、黄、蓝等）
+ */
 object RokidColors {
+    // 背景
     val Black = Color(0xFF000000)
-    val Green = Color(0xFF00FF66)      // 主色 - 官方绿
-    val Cyan = Color(0xFF00CCFF)       // 信息色 - 蛋白质
-    val White = Color(0xFFFFFFFF)
-    val Gray = Color(0xFF666666)       // 辅助文字
-    val DarkGray = Color(0xFF333333)
-    val Red = Color(0xFFFF4444)        // 错误色
-    val Yellow = Color(0xFFFFCC00)     // 警告色 - 碳水
-    val Orange = Color(0xFFFF8800)     // 脂肪色
     
-    // 透明度变体
-    val GreenLight = Color(0x4D00FF66) // 30% 绿色
-    val WhiteMedium = Color(0xCCFFFFFF) // 80% 白色
-    val WhiteLight = Color(0x80FFFFFF)  // 50% 白色
+    // 主色 - Rokid官方绿 #40FF5E
+    val Green = Color(0xFF40FF5E)
+    
+    // 透明度变体（用于区分层次）
+    val Green100 = Color(0xFF40FF5E)  // 100% - 主要内容、按下状态
+    val Green80 = Color(0xCC40FF5E)   // 80% - 选中状态、重要文字
+    val Green40 = Color(0x6640FF5E)   // 40% - 常态、次要内容
+    val Green20 = Color(0x3340FF5E)   // 20% - 提示、背景
+    val Green10 = Color(0x1A40FF5E)   // 10% - 微弱背景
+    
+    // 兼容旧代码的别名（全部映射到绿色透明度）
+    val Cyan = Green80           // 原信息色 -> 80%绿
+    val White = Green100         // 原白色 -> 100%绿
+    val Gray = Green40           // 原灰色 -> 40%绿
+    val DarkGray = Green20       // 原深灰 -> 20%绿
+    val Red = Green80            // 原错误色 -> 80%绿（用透明度表示）
+    val Yellow = Green80         // 原警告色 -> 80%绿
+    val Orange = Green80         // 原脂肪色 -> 80%绿
+    
+    // 透明度变体（兼容旧代码）
+    val GreenLight = Green40     // 40% 绿色
+    val WhiteMedium = Green80    // 80% 绿色
+    val WhiteLight = Green40     // 40% 绿色
+    
+    // 深浅绿色系列（用于饼图区分 - 使用透明度而非不同色值）
+    val GreenDark = Green100     // 100% - 蛋白质（最亮）
+    val GreenMedium = Green80    // 80% - 碳水（中等）
+    val GreenLight2 = Green40    // 40% - 脂肪（最暗）
 }
 
 /**
@@ -930,16 +1618,53 @@ enum class AppPhase {
 }
 
 /**
+ * 健康小提示列表
+ */
+object HealthTips {
+    private val tips = listOf(
+        "AI算法可能不准确，结果仅供参考",
+        "细嚼慢咽有助于消化吸收",
+        "每餐七分饱，健康又长寿",
+        "多吃蔬菜水果，营养更均衡",
+        "饭后散步有助于消化",
+        "少油少盐，清淡饮食更健康",
+        "规律进餐，保护肠胃",
+        "多喝水，促进新陈代谢",
+        "蛋白质是身体的建筑材料",
+        "膳食纤维有助于肠道健康",
+        "早餐要吃好，午餐要吃饱",
+        "晚餐宜清淡，睡眠更安稳",
+        "食物多样化，营养更全面",
+        "控制糖分摄入，预防慢性病"
+    )
+    
+    fun getRandomTip(): String = tips.random()
+    
+    fun getDisclaimer(): String = "AI算法可能不准确，结果仅供参考"
+}
+
+/**
  * UI 状态
  */
 class UiState {
     // 应用阶段
     val appPhase = mutableStateOf(AppPhase.SPLASH)
     
+    // 首次启动标记（只在首次显示完整 Logo）
+    val isFirstLaunch = mutableStateOf(true)
+    // 是否已经进行过拍照（用于判断是否显示简洁界面）
+    val hasEverCaptured = mutableStateOf(false)
+    
     // 连接状态
     val phoneConnected = mutableStateOf(false)
     val sessionStatus = mutableStateOf("空闲")           // 空闲 / 用餐中
     val statusMessage = mutableStateOf("等待手机连接")
+    
+    // 健康小提示（分析过程中显示）
+    // 个性化建议由手机端从后端获取并同步
+    val currentTip = mutableStateOf(HealthTips.getRandomTip())
+    // 个性化建议（基于用户健康数据，由手机端同步）
+    val personalizedTip = mutableStateOf<String?>(null)
     
     // 处理状态
     val isProcessing = mutableStateOf(false)
@@ -947,8 +1672,16 @@ class UiState {
     val showNotFoodWarning = mutableStateOf(false)
     val showCaptureFlash = mutableStateOf(false)
     
+    // 拍照缩略图（即时反馈用）
+    val capturedThumbnail = mutableStateOf<Bitmap?>(null)
+    val showThumbnail = mutableStateOf(false)
+    val showFullscreenPreview = mutableStateOf(false)  // 全屏预览（2秒）
+    
     // 电量
     val batteryLevel = mutableStateOf(100)  // 电量百分比
+    
+    // 屏幕状态
+    val isScreenOff = mutableStateOf(false)  // 屏幕是否已熄灭
     
     // 用餐监测计时（秒）
     val mealElapsedSeconds = mutableStateOf(0)
@@ -970,13 +1703,22 @@ class UiState {
     val fat = mutableStateOf(0)
     
     // 用餐总结（用餐结束时显示，10秒后自动退出）
-    val showMealSummary = mutableStateOf(false)
-    val mealSummaryCalories = mutableStateOf(0)
-    val mealSummaryMessage = mutableStateOf("")
-    val mealDurationMinutes = mutableStateOf(0)
-    val mealTotalProtein = mutableStateOf(0)
-    val mealTotalCarbs = mutableStateOf(0)
-    val mealTotalFat = mutableStateOf(0)
+     val showMealSummary = mutableStateOf(false)
+     val mealSummaryCalories = mutableStateOf(0)
+     val mealSummaryMessage = mutableStateOf("")
+     val mealDurationMinutes = mutableStateOf(0)
+     val mealTotalProtein = mutableStateOf(0)
+     val mealTotalCarbs = mutableStateOf(0)
+     val mealTotalFat = mutableStateOf(0)
+
+     val showLastResult = mutableStateOf(false)
+     val lastFoodName = mutableStateOf("")
+     val lastCalories = mutableStateOf(0)
+     val lastSuggestion = mutableStateOf("")
+
+    
+    // 结束用餐倒计时（0表示不在倒计时中，>0表示剩余秒数）
+    val endMealCountdown = mutableStateOf(0)
 }
 
 @Composable
@@ -1104,6 +1846,26 @@ fun ConnectingScreen(uiState: UiState) {
             )
         }
         
+        // 底部项目信息
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "Spatial Joy 2025 · 清觉科技",
+                color = RokidColors.Gray.copy(alpha = 0.6f),
+                fontSize = 10.sp
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = "AI结果仅供参考",
+                color = RokidColors.Gray.copy(alpha = 0.4f),
+                fontSize = 9.sp
+            )
+        }
+        
         // 电量显示（右下角）
         BatteryIndicator(
             level = uiState.batteryLevel.value,
@@ -1189,24 +1951,33 @@ fun MainScreen(uiState: UiState) {
             .fillMaxSize()
             .background(RokidColors.Black)
     ) {
-        // 中央主内容区 - 在安全区域内
         CenterContent(
             uiState = uiState,
             modifier = Modifier
                 .align(Alignment.Center)
-                .padding(top = 80.dp, bottom = 120.dp)  // 给底部状态栏留更多空间
+                .padding(top = 80.dp, bottom = 120.dp)
         )
-        
-        // 底部状态栏 - 固定在底部安全区域边缘
+
+        LastResultOverlay(
+            visible = uiState.showLastResult.value,
+            foodName = uiState.lastFoodName.value,
+            calories = uiState.lastCalories.value,
+            suggestion = uiState.lastSuggestion.value,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 88.dp, end = 24.dp)
+        )
+
         BottomStatusBar(
             screenState = screenState,
             isInSession = isInSession,
             batteryLevel = uiState.batteryLevel.value,
             mealElapsedSeconds = uiState.mealElapsedSeconds.value,
+            endMealCountdown = uiState.endMealCountdown.value,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(start = 24.dp, end = 24.dp, bottom = 60.dp)  // 在安全区域边缘
+                .padding(start = 24.dp, end = 24.dp, bottom = 60.dp)
         )
     }
 }
@@ -1220,6 +1991,7 @@ fun BottomStatusBar(
     isInSession: Boolean,
     batteryLevel: Int,
     mealElapsedSeconds: Int,
+    endMealCountdown: Int = 0,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -1229,7 +2001,10 @@ fun BottomStatusBar(
     ) {
         // 左侧：用餐监测计时（仅用餐中显示）或操作提示
         if (isInSession) {
-            MealTimerIndicator(elapsedSeconds = mealElapsedSeconds)
+            MealTimerIndicator(
+                elapsedSeconds = mealElapsedSeconds,
+                endMealCountdown = endMealCountdown
+            )
         } else {
             // 空闲时显示操作提示
             val hintText = when (screenState) {
@@ -1255,11 +2030,31 @@ fun BottomStatusBar(
 
 /**
  * 用餐计时指示器 - 与电量指示器统一风格，包含滑动提示
+ * 
+ * @param elapsedSeconds 用餐已进行的秒数
+ * @param endMealCountdown 结束用餐倒计时（0表示不在倒计时中，>0表示剩余秒数）
  */
 @Composable
-fun MealTimerIndicator(elapsedSeconds: Int, modifier: Modifier = Modifier) {
+fun MealTimerIndicator(
+    elapsedSeconds: Int,
+    endMealCountdown: Int = 0,
+    modifier: Modifier = Modifier
+) {
     val minutes = elapsedSeconds / 60
     val seconds = elapsedSeconds % 60
+    val isCountingDown = endMealCountdown > 0
+    
+    // 倒计时时的闪烁动画
+    val infiniteTransition = rememberInfiniteTransition(label = "countdown")
+    val countdownAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.5f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(500),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "countdownAlpha"
+    )
     
     Column(
         modifier = modifier,
@@ -1267,35 +2062,45 @@ fun MealTimerIndicator(elapsedSeconds: Int, modifier: Modifier = Modifier) {
     ) {
         Row(
             modifier = Modifier
-                .border(1.dp, RokidColors.Gray, RoundedCornerShape(2.dp))
+                .border(
+                    1.dp,
+                    if (isCountingDown) RokidColors.Yellow else RokidColors.Gray,
+                    RoundedCornerShape(2.dp)
+                )
                 .padding(horizontal = 6.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 绿色圆点
+            // 圆点（倒计时时变黄色并闪烁）
             Box(
                 modifier = Modifier
                     .size(4.dp)
-                    .background(RokidColors.Green, CircleShape)
+                    .alpha(if (isCountingDown) countdownAlpha else 1f)
+                    .background(
+                        if (isCountingDown) RokidColors.Yellow else RokidColors.Green,
+                        CircleShape
+                    )
             )
             Spacer(modifier = Modifier.width(4.dp))
             // 用餐中 + 计时
             Text(
-                text = "用餐中",
-                color = RokidColors.Green,
+                text = if (isCountingDown) "结束倒计时" else "用餐中",
+                color = if (isCountingDown) RokidColors.Yellow else RokidColors.Green,
                 fontSize = 12.sp
             )
             Spacer(modifier = Modifier.width(4.dp))
             Text(
-                text = String.format("%02d:%02d", minutes, seconds),
-                color = RokidColors.Gray,
+                text = if (isCountingDown) "${endMealCountdown}s" else String.format("%02d:%02d", minutes, seconds),
+                color = if (isCountingDown) RokidColors.Yellow else RokidColors.Gray,
                 fontSize = 12.sp
             )
         }
         Spacer(modifier = Modifier.height(4.dp))
-        // 滑动提示
+        // 点击提示（倒计时中显示取消提示）
         Text(
-            text = "→ 滑动结束用餐",
-            color = RokidColors.Gray.copy(alpha = 0.6f),
+            text = if (isCountingDown) "● 再次点击取消" else "● 点击结束用餐",
+            color = if (isCountingDown) 
+                RokidColors.Yellow.copy(alpha = if (isCountingDown) countdownAlpha else 0.7f) 
+                else RokidColors.Green.copy(alpha = 0.7f),
             fontSize = 10.sp
         )
     }
@@ -1391,12 +2196,13 @@ fun TopStatusBar(
  * UI 状态枚举
  */
 enum class ScreenState {
-    IDLE,           // 初始状态（品牌标题）
-    PROCESSING,     // 处理中
-    RESULT,         // 显示结果
-    NOT_FOOD,       // 未识别到餐品
-    MONITORING,     // 用餐监测中（结果隐藏后）
-    MEAL_SUMMARY    // 用餐总结
+    IDLE,               // 初始状态（品牌标题）
+    FULLSCREEN_PREVIEW, // 全屏预览（拍照后2秒）
+    PROCESSING,         // 处理中
+    RESULT,             // 显示结果
+    NOT_FOOD,           // 未识别到餐品
+    MONITORING,         // 用餐监测中（结果隐藏后）
+    MEAL_SUMMARY        // 用餐总结
 }
 
 /**
@@ -1406,6 +2212,7 @@ fun getScreenState(uiState: UiState): ScreenState {
     return when {
         uiState.showMealSummary.value -> ScreenState.MEAL_SUMMARY
         uiState.showNotFoodWarning.value -> ScreenState.NOT_FOOD
+        uiState.showFullscreenPreview.value -> ScreenState.FULLSCREEN_PREVIEW
         uiState.isProcessing.value -> ScreenState.PROCESSING
         uiState.foodName.value.isNotEmpty() -> ScreenState.RESULT
         // 用餐中且结果已隐藏，显示监测状态
@@ -1447,10 +2254,20 @@ fun CenterContent(uiState: UiState, modifier: Modifier = Modifier) {
                     NotFoodWarning()
                 }
                 
+                ScreenState.FULLSCREEN_PREVIEW -> {
+                    // 全屏预览（拍照后2秒）
+                    FullscreenPhotoPreview(
+                        bitmap = uiState.capturedThumbnail.value
+                    )
+                }
+                
                 ScreenState.PROCESSING -> {
-                    ProcessingAnimation(
+                    ProcessingAnimationWithThumbnail(
                         phase = uiState.processingPhase.value,
-                        statusMessage = uiState.statusMessage.value
+                        statusMessage = uiState.statusMessage.value,
+                        thumbnail = uiState.capturedThumbnail.value,
+                        showThumbnail = uiState.showThumbnail.value,
+                        currentTip = uiState.currentTip.value
                     )
                 }
                 
@@ -1467,8 +2284,13 @@ fun CenterContent(uiState: UiState, modifier: Modifier = Modifier) {
                 }
                 
                 ScreenState.IDLE -> {
-                    // 首页仅显示品牌标识，极简设计
-                    BrandTitle()
+                    // 首次启动显示完整品牌标识，后续显示极简界面
+                    if (uiState.isFirstLaunch.value) {
+                        BrandTitle()
+                    } else {
+                        // 非首次：极简待机界面，降低打扰
+                        MinimalIdleScreen()
+                    }
                 }
             }
         }
@@ -1619,10 +2441,133 @@ fun BrandTitle() {
 }
 
 /**
- * 科技感处理动画
+ * 极简待机界面 - 非首次启动时显示
+ * 
+ * 设计原则：降低打扰，只显示必要信息
+ * - 小型 Logo 标识（让用户知道 APP 在运行）
+ * - 简洁的操作提示
  */
 @Composable
-fun ProcessingAnimation(phase: ProcessingPhase, statusMessage: String) {
+fun MinimalIdleScreen() {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        // 小型 Logo - 低调存在感
+        Text(
+            text = "VISEAT",
+            color = RokidColors.Green.copy(alpha = 0.5f),
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Medium,
+            letterSpacing = 2.sp
+        )
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        // 简洁提示
+        Text(
+            text = "单击拍照",
+            color = RokidColors.Gray.copy(alpha = 0.6f),
+            fontSize = 14.sp
+        )
+    }
+}
+
+/**
+ * 全屏照片预览 - 拍照后显示3秒
+ * 
+ * 3秒后自动消失，回到分析动画
+ */
+@Composable
+fun FullscreenPhotoPreview(bitmap: Bitmap?) {
+    // 淡入动画
+    val alpha by animateFloatAsState(
+        targetValue = 1f,
+        animationSpec = tween(300),
+        label = "previewAlpha"
+    )
+    
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .alpha(alpha),
+        contentAlignment = Alignment.Center
+    ) {
+        if (bitmap != null) {
+            // 全屏显示拍摄的照片（逆时针旋转90度）
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = "拍摄的照片",
+                modifier = Modifier
+                    .fillMaxWidth(0.85f)
+                    .graphicsLayer { rotationZ = 0f }
+                    .clip(RoundedCornerShape(16.dp))
+                    .border(3.dp, RokidColors.Green, RoundedCornerShape(16.dp))
+            )
+        }
+        
+        // 顶部状态提示
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .background(
+                        color = RokidColors.Green.copy(alpha = 0.2f),
+                        shape = RoundedCornerShape(20.dp)
+                    )
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                Text(
+                    text = "✓",
+                    color = RokidColors.Green,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "已拍摄",
+                    color = RokidColors.Green,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+        
+        // 底部倒计时提示
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 30.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "即将开始分析...",
+                color = RokidColors.Gray,
+                fontSize = 14.sp
+            )
+        }
+    }
+}
+
+/**
+ * 带缩略图的处理动画 - 即时反馈优化
+ * 
+ * 拍照成功后立即显示缩略图，让用户知道拍摄成功
+ * 分析过程中显示健康小提示
+ */
+@Composable
+fun ProcessingAnimationWithThumbnail(
+    phase: ProcessingPhase,
+    statusMessage: String,
+    thumbnail: Bitmap?,
+    showThumbnail: Boolean,
+    currentTip: String = HealthTips.getRandomTip()
+) {
     val infiniteTransition = rememberInfiniteTransition(label = "processing")
     
     // 旋转动画
@@ -1654,15 +2599,15 @@ fun ProcessingAnimation(phase: ProcessingPhase, statusMessage: String) {
         if (phase == ProcessingPhase.CAPTURING) {
             ViewfinderAnimation()
         } else {
-            // 科技感圆环动画
+            // 显示缩略图 + 加载动画
             Box(
-                modifier = Modifier.size(80.dp),
+                modifier = Modifier.size(100.dp),
                 contentAlignment = Alignment.Center
             ) {
-                // 外圈旋转
+                // 外圈旋转动画
                 Canvas(
                     modifier = Modifier
-                        .size(80.dp)
+                        .size(100.dp)
                         .graphicsLayer { rotationZ = rotation }
                 ) {
                     drawArc(
@@ -1680,37 +2625,54 @@ fun ProcessingAnimation(phase: ProcessingPhase, statusMessage: String) {
                     )
                 }
                 
-                // 内圈脉冲
-                Box(
-                    modifier = Modifier
-                        .size(50.dp)
-                        .alpha(pulse)
-                        .background(
-                            brush = Brush.radialGradient(
-                                colors = listOf(
-                                    RokidColors.Green.copy(alpha = 0.3f),
-                                    Color.Transparent
-                                )
+                // 中心内容：缩略图或图标
+                if (showThumbnail && thumbnail != null) {
+                    // 显示拍摄的缩略图（逆时针旋转90度）
+                    Image(
+                        bitmap = thumbnail.asImageBitmap(),
+                        contentDescription = "拍摄的照片",
+                        modifier = Modifier
+                            .size(70.dp)
+.graphicsLayer { rotationZ = 0f }
+                            .clip(RoundedCornerShape(8.dp))
+                            .border(2.dp, RokidColors.Green, RoundedCornerShape(8.dp))
+                    )
+                } else {
+                    // 内圈脉冲 + 图标
+                    Box(
+                        modifier = Modifier
+                            .size(60.dp)
+                            .alpha(pulse)
+                            .background(
+                                brush = Brush.radialGradient(
+                                    colors = listOf(
+                                        RokidColors.Green.copy(alpha = 0.3f),
+                                        Color.Transparent
+                                    )
+                                ),
+                                shape = CircleShape
                             ),
-                            shape = CircleShape
+                        contentAlignment = Alignment.Center
+                    ) {
+                        // 阶段图标（使用绿色文字，不用彩色emoji）
+                        Text(
+                            text = when (phase) {
+                                ProcessingPhase.SENDING -> "↑"
+                                ProcessingPhase.ANALYZING_FOOD -> "◎"
+                                ProcessingPhase.CALCULATING_CALORIES -> "≡"
+                                ProcessingPhase.CALCULATING_NUTRITION -> "◇"
+                                else -> "○"
+                            },
+                            fontSize = 32.sp,
+                            color = RokidColors.Green,
+                            fontWeight = FontWeight.Light
                         )
-                )
-                
-                // 阶段图标
-                Text(
-                    text = when (phase) {
-                        ProcessingPhase.SENDING -> "📤"
-                        ProcessingPhase.ANALYZING_FOOD -> "🍽️"
-                        ProcessingPhase.CALCULATING_CALORIES -> "🔥"
-                        ProcessingPhase.CALCULATING_NUTRITION -> "🧪"
-                        else -> "⚙️"
-                    },
-                    fontSize = 28.sp
-                )
+                    }
+                }
             }
         }
         
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(16.dp))
         
         // 状态文字
         Text(
@@ -1723,7 +2685,77 @@ fun ProcessingAnimation(phase: ProcessingPhase, statusMessage: String) {
         // 进度指示器
         Spacer(modifier = Modifier.height(12.dp))
         ProcessingProgressBar(phase = phase)
+        
+        // 健康小提示（分析过程中显示）
+        if (phase != ProcessingPhase.CAPTURING && phase != ProcessingPhase.IDLE) {
+            Spacer(modifier = Modifier.height(20.dp))
+            HealthTipDisplay(tip = currentTip)
+        }
     }
+}
+
+/**
+ * 健康小提示显示组件
+ * 
+ * 在分析过程中显示，包含免责声明和健康建议
+ */
+@Composable
+fun HealthTipDisplay(tip: String) {
+    // 轮播动画 - 淡入淡出
+    val infiniteTransition = rememberInfiniteTransition(label = "tip")
+    val alpha by infiniteTransition.animateFloat(
+        initialValue = 0.6f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "tipAlpha"
+    )
+    
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.padding(horizontal = 16.dp)
+    ) {
+        // 小提示图标和文字
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .alpha(alpha)
+                .border(
+                    width = 1.dp,
+                    color = RokidColors.Green.copy(alpha = 0.3f),
+                    shape = RoundedCornerShape(8.dp)
+                )
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+        ) {
+            Text(
+                text = "•",
+                fontSize = 14.sp,
+                color = RokidColors.Green
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = tip,
+                color = RokidColors.Green.copy(alpha = 0.8f),
+                fontSize = 12.sp,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+/**
+ * 科技感处理动画（保留兼容）
+ */
+@Composable
+fun ProcessingAnimation(phase: ProcessingPhase, statusMessage: String) {
+    ProcessingAnimationWithThumbnail(
+        phase = phase,
+        statusMessage = statusMessage,
+        thumbnail = null,
+        showThumbnail = false
+    )
 }
 
 /**
@@ -1857,6 +2889,11 @@ fun ProcessingProgressBar(phase: ProcessingPhase) {
 
 /**
  * 用餐总结显示 - 带饼状图和用餐时长
+ * 
+ * UI优化：
+ * - 增大边距，确保文字完整显示
+ * - 饼图使用深浅绿色区分营养比例
+ * - 突出显示用餐时长
  */
 @Composable
 fun MealSummaryDisplay(
@@ -1874,106 +2911,131 @@ fun MealSummaryDisplay(
         label = "summaryCalories"
     )
     
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // 左侧：饼状图
-        NutrientPieChart(
-            protein = protein,
-            carbs = carbs,
-            fat = fat,
-            modifier = Modifier.size(140.dp)
+     Column(
+         modifier = Modifier
+             .fillMaxWidth()
+             .padding(horizontal = 28.dp),
+         horizontalAlignment = Alignment.CenterHorizontally
+     ) {
+        // 标题
+        Text(
+            text = "[ 用餐结束 ]",
+            fontSize = 24.sp,
+            color = RokidColors.Green,
+            fontWeight = FontWeight.Bold
         )
         
-        // 右侧：数据信息
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally
+        Spacer(modifier = Modifier.height(12.dp))
+        
+        // 主要内容区：饼图 + 数据
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // 标题
-            Text(
-                text = "🍽️ 用餐结束",
-                fontSize = 24.sp,
-                color = RokidColors.Green,
-                fontWeight = FontWeight.Bold
+            // 左侧：饼状图（深浅绿色）
+            NutrientPieChart(
+                protein = protein,
+                carbs = carbs,
+                fat = fat,
+                modifier = Modifier.size(96.dp)
             )
             
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            // 用餐时长
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = "⏱️", fontSize = 16.sp)
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = if (durationMinutes > 0) "${durationMinutes}分钟" else "<1分钟",
-                    color = RokidColors.Gray,
-                    fontSize = 16.sp
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            // 总热量
-            Text(
-                text = animatedCalories.toInt().toString(),
-                color = RokidColors.Green,
-                fontSize = 48.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "千卡",
-                color = RokidColors.Green.copy(alpha = 0.7f),
-                fontSize = 16.sp
-            )
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            // 营养成分数值
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            // 右侧：数据信息
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                NutrientMiniItem("蛋白", protein, RokidColors.Cyan)
-                NutrientMiniItem("碳水", carbs, RokidColors.Yellow)
-                NutrientMiniItem("脂肪", fat, RokidColors.Orange)
+                // 总热量 - 大字显示
+                Text(
+                    text = animatedCalories.toInt().toString(),
+                    color = RokidColors.Green,
+                    fontSize = 44.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "千卡",
+                    color = RokidColors.Green.copy(alpha = 0.7f),
+                    fontSize = 14.sp
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                // 用餐时长 - 突出显示
+                Row(
+                    modifier = Modifier
+                        .background(
+                            color = RokidColors.Green.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "◷",
+                        fontSize = 14.sp,
+                        color = RokidColors.Green
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (durationMinutes > 0) "用餐 ${durationMinutes} 分钟" else "用餐 <1 分钟",
+                        color = RokidColors.Green,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
         }
-    }
-    
-    Spacer(modifier = Modifier.height(12.dp))
-    
-    // 建议 - 线框样式
-    Box(
-        modifier = Modifier
-            .border(1.dp, RokidColors.Green.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-    ) {
+        
+        Spacer(modifier = Modifier.height(12.dp))
+        
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, RokidColors.Gray.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            NutrientMiniItem("蛋白质", protein, RokidColors.GreenDark)    // 深绿
+            NutrientMiniItem("碳水", carbs, RokidColors.Green)            // 主绿
+            NutrientMiniItem("脂肪", fat, RokidColors.GreenLight2)        // 浅绿
+        }
+        
+        Spacer(modifier = Modifier.height(10.dp))
+        
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, RokidColors.Green.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                .padding(horizontal = 14.dp, vertical = 8.dp)
+        ) {
+            Text(
+                text = summaryMessage,
+                color = RokidColors.Green,
+                fontSize = 13.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
         Text(
-            text = summaryMessage,
-            color = RokidColors.Green,
-            fontSize = 14.sp,
-            textAlign = TextAlign.Center
+            text = "→ 滑动继续",
+            color = RokidColors.Gray,
+            fontSize = 11.sp
         )
     }
     
-    Spacer(modifier = Modifier.height(8.dp))
-    
-    // 提示
-    Text(
-        text = "短按任意键继续",
-        color = RokidColors.Gray,
-        fontSize = 12.sp
-    )
-    
-    // 8秒后自动关闭
-    LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(8000)
-        onDismiss()
-    }
+
 }
 
 /**
- * 营养成分饼状图
+ * 营养成分饼状图 - 使用深浅绿色区分
+ * 
+ * 颜色方案：
+ * - 蛋白质：深绿色 (GreenDark)
+ * - 碳水：主绿色 (Green)
+ * - 脂肪：浅绿色 (GreenLight2)
  */
 @Composable
 fun NutrientPieChart(
@@ -1996,7 +3058,7 @@ fun NutrientPieChart(
         contentAlignment = Alignment.Center
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val strokeWidth = 20.dp.toPx()
+            val strokeWidth = 14.dp.toPx()
             val radius = (size.minDimension - strokeWidth) / 2
             val center = Offset(size.width / 2, size.height / 2)
             
@@ -2007,9 +3069,9 @@ fun NutrientPieChart(
             
             var startAngle = -90f
             
-            // 蛋白质 - 青色
+            // 蛋白质 - 深绿色
             drawArc(
-                color = RokidColors.Cyan,
+                color = RokidColors.GreenDark,
                 startAngle = startAngle,
                 sweepAngle = proteinAngle,
                 useCenter = false,
@@ -2019,9 +3081,9 @@ fun NutrientPieChart(
             )
             startAngle += proteinAngle
             
-            // 碳水 - 黄色
+            // 碳水 - 主绿色
             drawArc(
-                color = RokidColors.Yellow,
+                color = RokidColors.Green,
                 startAngle = startAngle,
                 sweepAngle = carbsAngle,
                 useCenter = false,
@@ -2031,9 +3093,9 @@ fun NutrientPieChart(
             )
             startAngle += carbsAngle
             
-            // 脂肪 - 橙色
+            // 脂肪 - 浅绿色
             drawArc(
-                color = RokidColors.Orange,
+                color = RokidColors.GreenLight2,
                 startAngle = startAngle,
                 sweepAngle = fatAngle,
                 useCenter = false,
@@ -2048,12 +3110,12 @@ fun NutrientPieChart(
             Text(
                 text = "营养",
                 color = RokidColors.Gray,
-                fontSize = 12.sp
+                fontSize = 11.sp
             )
             Text(
                 text = "占比",
                 color = RokidColors.Gray,
-                fontSize = 12.sp
+                fontSize = 11.sp
             )
         }
     }
@@ -2061,20 +3123,31 @@ fun NutrientPieChart(
 
 /**
  * 迷你营养项（用于总结页面）
+ * 
+ * 使用深浅绿色区分不同营养成分
  */
 @Composable
 fun NutrientMiniItem(label: String, value: Int, color: Color) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        // 数值
         Text(
             text = "${value}g",
             color = color,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Medium
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold
         )
+        // 标签
         Text(
             text = label,
-            color = color.copy(alpha = 0.7f),
-            fontSize = 10.sp
+            color = color.copy(alpha = 0.8f),
+            fontSize = 12.sp
+        )
+        // 颜色指示条
+        Box(
+            modifier = Modifier
+                .width(24.dp)
+                .height(3.dp)
+                .background(color, RoundedCornerShape(2.dp))
         )
     }
 }
@@ -2083,13 +3156,76 @@ fun NutrientMiniItem(label: String, value: Int, color: Color) {
  * 非餐品警告
  */
 @Composable
+fun LastResultOverlay(
+    visible: Boolean,
+    foodName: String,
+    calories: Int,
+    suggestion: String,
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(200)),
+        exit = fadeOut(tween(150))
+    ) {
+        Column(
+            modifier = modifier
+                .widthIn(max = 220.dp)
+                .border(1.dp, RokidColors.Green.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                .background(RokidColors.DarkGray.copy(alpha = 0.85f), RoundedCornerShape(12.dp))
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+        ) {
+            Text(
+                text = foodName,
+                color = RokidColors.White,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.End,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.End,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = calories.toString(),
+                    color = RokidColors.Green,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "kcal",
+                    color = RokidColors.Green.copy(alpha = 0.7f),
+                    fontSize = 12.sp
+                )
+            }
+            if (suggestion.isNotBlank()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = suggestion,
+                    color = RokidColors.Green.copy(alpha = 0.85f),
+                    fontSize = 11.sp,
+                    maxLines = 2,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun NotFoodWarning() {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = "⚠️",
-            fontSize = 48.sp
+            text = "△",
+            fontSize = 48.sp,
+            color = RokidColors.Green80
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
@@ -2158,24 +3294,45 @@ fun ResultDisplay(uiState: UiState) {
         NutrientItem("脂肪", uiState.fat.value, RokidColors.Orange)
     }
     
-    // 建议（淡入淡出）- 线框样式
+    // 健康提示（TIPS）- 带标签的线框样式
     AnimatedVisibility(
         visible = uiState.suggestion.value.isNotEmpty(),
         enter = fadeIn(animationSpec = tween(300)),
         exit = fadeOut(animationSpec = tween(200))
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Spacer(modifier = Modifier.height(12.dp))
-            Box(
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // TIPS 标签 + 建议内容
+            Row(
                 modifier = Modifier
-                    .border(1.dp, RokidColors.Green.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .border(1.dp, RokidColors.Green.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
+                // TIPS 标签
+                Box(
+                    modifier = Modifier
+                        .background(RokidColors.Green, RoundedCornerShape(4.dp))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = "TIPS",
+                        color = RokidColors.Black,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                
+                Spacer(modifier = Modifier.width(8.dp))
+                
+                // 建议内容
                 Text(
-                    text = "\"${uiState.suggestion.value}\"",
+                    text = uiState.suggestion.value,
                     color = RokidColors.Green,
                     fontSize = 14.sp,
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Start,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
             }
         }

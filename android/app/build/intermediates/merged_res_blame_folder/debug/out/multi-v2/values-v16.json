@@ -4,7 +4,7 @@
             "outputFile": "com.rokid.nutrition.app-mergeDebugResources-68:/values-v16/values-v16.xml",
             "map": [
                 {
-                    "source": "/Users/linjunjie/.gradle/caches/transforms-3/af226701e07b6e5753175ffad1df9a85/transformed/appcompat-1.6.1/res/values-v16/values-v16.xml",
+                    "source": "/Users/linjunjie/.gradle/caches/transforms-3/732a67fbf3b67b087ed228cb561dee59/transformed/appcompat-1.6.1/res/values-v16/values-v16.xml",
                     "from": {
                         "startLines": "2",
                         "startColumns": "4",
@@ -23,7 +23,7 @@
                     }
                 },
                 {
-                    "source": "/Users/linjunjie/.gradle/caches/transforms-3/2ccd268e0ca2e1cd10ec650ac8067a3e/transformed/core-1.12.0/res/values-v16/values-v16.xml",
+                    "source": "/Users/linjunjie/.gradle/caches/transforms-3/3b0e9f9a5605d5806e273f7ad39d12c0/transformed/core-1.12.0/res/values-v16/values-v16.xml",
                     "from": {
                         "startLines": "2",
                         "startColumns": "4",

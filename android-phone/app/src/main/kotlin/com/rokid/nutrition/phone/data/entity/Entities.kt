@@ -6,7 +6,7 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
- * 用户档案
+ * 用户档案 - 增强版
  */
 @Entity(tableName = "user_profiles")
 data class UserProfileEntity(
@@ -14,16 +14,33 @@ data class UserProfileEntity(
     val nickname: String? = null,  // 用户昵称
     val age: Int,
     val gender: String = "male",  // male/female
+    val birthDate: String? = null,  // 出生日期 yyyy-MM-dd
     val height: Float,  // cm
     val weight: Float,  // kg
     val bmi: Float,
     val activityLevel: String = "moderate",  // sedentary/light/moderate/active/very_active
     val healthGoal: String = "maintain",  // lose_weight/gain_muscle/maintain
     val targetWeight: Float? = null,  // 目标体重 kg
+    val targetDate: String? = null,  // 目标日期 yyyy-MM-dd
+    val dietType: String = "omnivore",  // omnivore/vegetarian/vegan/low_carb/keto/mediterranean
+    val allergens: String = "[]",  // JSON array: ["gluten", "dairy", "nuts"]
     val healthConditions: String,  // JSON array: ["脂肪肝", "高血压"]
     val dietaryPreferences: String,  // JSON array: ["低油", "低糖"]
+    val isOnboardingCompleted: Boolean = false,  // 是否完成引导
     val createdAt: Long,
     val updatedAt: Long
+)
+
+/**
+ * 体重记录
+ */
+@Entity(tableName = "weight_entries")
+data class WeightEntryEntity(
+    @PrimaryKey val id: String,
+    val weight: Float,  // kg
+    val note: String? = null,
+    val recordedAt: Long,
+    val createdAt: Long
 )
 
 /**
@@ -93,6 +110,7 @@ data class SnapshotFoodEntity(
     val snapshotId: String,
     val name: String,
     val chineseName: String?,
+    val category: String? = null,  // 食物分类: meal/snack/beverage/dessert/fruit
     // 原始值（AI识别）
     val originalWeightG: Double? = null,
     val originalCaloriesKcal: Double? = null,

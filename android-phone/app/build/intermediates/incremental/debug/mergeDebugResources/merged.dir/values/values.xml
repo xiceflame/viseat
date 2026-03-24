@@ -619,8 +619,12 @@
     <color name="error_color_material_light">#ff5722</color>
     <color name="foreground_material_dark">@android:color/white</color>
     <color name="foreground_material_light">@android:color/black</color>
+    <color name="glasses_accent">#34C759</color>
+    <color name="glasses_camera">#5AC8FA</color>
+    <color name="glasses_frame">#2C2C2E</color>
     <color name="highlighted_text_material_dark">#6680cbc4</color>
     <color name="highlighted_text_material_light">#66009688</color>
+    <color name="launcher_background">#FAF8F5</color>
     <color name="m3_ref_palette_black">#ff000000</color>
     <color name="m3_ref_palette_error0">#ff000000</color>
     <color name="m3_ref_palette_error10">#ff410e0b</color>
@@ -1907,7 +1911,7 @@
     <string name="abc_shareactionprovider_share_with_application">Share with <ns2:g example="Mail" id="application_name">%s</ns2:g></string>
     <string name="abc_toolbar_collapse_description">Collapse</string>
     <string name="androidx_startup" translatable="false">androidx.startup</string>
-    <string name="app_name">营养助手</string>
+    <string name="app_name">VISEAT食智</string>
     <string name="appbar_scrolling_view_behavior" translatable="false">com.google.android.material.appbar.AppBarLayout$ScrollingViewBehavior</string>
     <string name="bluetooth_connected">已连接</string>
     <string name="bluetooth_connecting">正在连接眼镜...</string>
@@ -2110,7 +2114,7 @@
     <string name="not_selected">Not selected</string>
     <string name="notification_channel_name">眼镜连接服务</string>
     <string name="notification_text">正在与眼镜保持连接</string>
-    <string name="notification_title">营养助手</string>
+    <string name="notification_title">VISEAT食智</string>
     <string name="off">Off</string>
     <string name="on">On</string>
     <string name="password_toggle_content_description">Show password</string>

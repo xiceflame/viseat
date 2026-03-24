@@ -157,4 +157,78 @@ interface ApiService {
      */
     @DELETE("/api/v1/meal/session/{session_id}")
     suspend fun deleteMealSession(@Path("session_id") sessionId: String): DeleteMealResponse
+    
+    // ==================== 个性化建议 API ====================
+    
+    /**
+     * 获取个性化建议
+     * GET /api/v1/users/{user_id}/personalized-tips
+     */
+    @GET("/api/v1/users/{user_id}/personalized-tips")
+    suspend fun getPersonalizedTips(
+        @Path("user_id") userId: String
+    ): PersonalizedTipsResponse
+    
+    /**
+     * 刷新个性化建议
+     * POST /api/v1/users/{user_id}/personalized-tips/refresh
+     */
+    @POST("/api/v1/users/{user_id}/personalized-tips/refresh")
+    suspend fun refreshPersonalizedTips(
+        @Path("user_id") userId: String,
+        @Body request: RefreshTipsRequest
+    ): RefreshTipsResponse
+    
+    /**
+     * 提交建议反馈
+     * PUT /api/v1/users/{user_id}/personalized-tips/{tip_id}/feedback
+     */
+    @PUT("/api/v1/users/{user_id}/personalized-tips/{tip_id}/feedback")
+    suspend fun submitTipFeedback(
+        @Path("user_id") userId: String,
+        @Path("tip_id") tipId: String,
+        @Body request: TipFeedbackRequest
+    ): TipFeedbackResponse
+    
+    /**
+     * 忽略某条建议
+     * DELETE /api/v1/users/{user_id}/personalized-tips/{tip_id}
+     */
+    @DELETE("/api/v1/users/{user_id}/personalized-tips/{tip_id}")
+    suspend fun ignoreTip(
+        @Path("user_id") userId: String,
+        @Path("tip_id") tipId: String
+    ): TipFeedbackResponse
+    
+    // ==================== 体重追踪 API ====================
+    
+    /**
+     * 添加体重记录
+     * POST /api/v1/users/{user_id}/weight
+     */
+    @POST("/api/v1/users/{user_id}/weight")
+    suspend fun addWeightEntry(
+        @Path("user_id") userId: String,
+        @Body request: WeightEntryRequest
+    ): WeightEntryResponse
+    
+    /**
+     * 获取体重历史
+     * GET /api/v1/users/{user_id}/weight/history
+     */
+    @GET("/api/v1/users/{user_id}/weight/history")
+    suspend fun getWeightHistory(
+        @Path("user_id") userId: String,
+        @Query("days") days: Int = 30  // 默认获取30天
+    ): WeightHistoryResponse
+    
+    /**
+     * 删除体重记录
+     * DELETE /api/v1/users/{user_id}/weight/{entry_id}
+     */
+    @DELETE("/api/v1/users/{user_id}/weight/{entry_id}")
+    suspend fun deleteWeightEntry(
+        @Path("user_id") userId: String,
+        @Path("entry_id") entryId: String
+    ): DeleteWeightResponse
 }

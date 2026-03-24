@@ -17,9 +17,10 @@ import com.rokid.nutrition.phone.data.entity.*
         MealSessionEntity::class,
         MealSnapshotEntity::class,
         SnapshotFoodEntity::class,
-        SyncQueueEntity::class
+        SyncQueueEntity::class,
+        WeightEntryEntity::class
     ],
-    version = 4,  // 升级版本以触发数据库重建
+    version = 6,  // 添加增强版用户档案字段和体重记录表
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -29,6 +30,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun mealSnapshotDao(): MealSnapshotDao
     abstract fun snapshotFoodDao(): SnapshotFoodDao
     abstract fun syncQueueDao(): SyncQueueDao
+    abstract fun weightEntryDao(): WeightEntryDao
     
     companion object {
         private const val DATABASE_NAME = "nutrition_phone.db"

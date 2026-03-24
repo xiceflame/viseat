@@ -70,24 +70,24 @@
 40-->/Users/linjunjie/CascadeProjects/RokidAI/android/app/src/main/AndroidManifest.xml:29:22-76
 41
 42    <permission
-42-->[androidx.core:core:1.12.0] /Users/linjunjie/.gradle/caches/transforms-3/2ccd268e0ca2e1cd10ec650ac8067a3e/transformed/core-1.12.0/AndroidManifest.xml:22:5-24:47
+42-->[androidx.core:core:1.12.0] /Users/linjunjie/.gradle/caches/transforms-3/3b0e9f9a5605d5806e273f7ad39d12c0/transformed/core-1.12.0/AndroidManifest.xml:22:5-24:47
 43        android:name="com.rokid.nutrition.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
-43-->[androidx.core:core:1.12.0] /Users/linjunjie/.gradle/caches/transforms-3/2ccd268e0ca2e1cd10ec650ac8067a3e/transformed/core-1.12.0/AndroidManifest.xml:23:9-81
+43-->[androidx.core:core:1.12.0] /Users/linjunjie/.gradle/caches/transforms-3/3b0e9f9a5605d5806e273f7ad39d12c0/transformed/core-1.12.0/AndroidManifest.xml:23:9-81
 44        android:protectionLevel="signature" />
-44-->[androidx.core:core:1.12.0] /Users/linjunjie/.gradle/caches/transforms-3/2ccd268e0ca2e1cd10ec650ac8067a3e/transformed/core-1.12.0/AndroidManifest.xml:24:9-44
+44-->[androidx.core:core:1.12.0] /Users/linjunjie/.gradle/caches/transforms-3/3b0e9f9a5605d5806e273f7ad39d12c0/transformed/core-1.12.0/AndroidManifest.xml:24:9-44
 45
 46    <uses-permission android:name="com.rokid.nutrition.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
-46-->[androidx.core:core:1.12.0] /Users/linjunjie/.gradle/caches/transforms-3/2ccd268e0ca2e1cd10ec650ac8067a3e/transformed/core-1.12.0/AndroidManifest.xml:26:5-97
-46-->[androidx.core:core:1.12.0] /Users/linjunjie/.gradle/caches/transforms-3/2ccd268e0ca2e1cd10ec650ac8067a3e/transformed/core-1.12.0/AndroidManifest.xml:26:22-94
+46-->[androidx.core:core:1.12.0] /Users/linjunjie/.gradle/caches/transforms-3/3b0e9f9a5605d5806e273f7ad39d12c0/transformed/core-1.12.0/AndroidManifest.xml:26:5-97
+46-->[androidx.core:core:1.12.0] /Users/linjunjie/.gradle/caches/transforms-3/3b0e9f9a5605d5806e273f7ad39d12c0/transformed/core-1.12.0/AndroidManifest.xml:26:22-94
 47
 48    <application
-48-->/Users/linjunjie/CascadeProjects/RokidAI/android/app/src/main/AndroidManifest.xml:31:5-50:19
+48-->/Users/linjunjie/CascadeProjects/RokidAI/android/app/src/main/AndroidManifest.xml:31:5-62:19
 49        android:name="com.rokid.nutrition.ViseatApplication"
 49-->/Users/linjunjie/CascadeProjects/RokidAI/android/app/src/main/AndroidManifest.xml:32:9-42
 50        android:allowBackup="true"
 50-->/Users/linjunjie/CascadeProjects/RokidAI/android/app/src/main/AndroidManifest.xml:33:9-35
 51        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
-51-->[androidx.core:core:1.12.0] /Users/linjunjie/.gradle/caches/transforms-3/2ccd268e0ca2e1cd10ec650ac8067a3e/transformed/core-1.12.0/AndroidManifest.xml:28:18-86
+51-->[androidx.core:core:1.12.0] /Users/linjunjie/.gradle/caches/transforms-3/3b0e9f9a5605d5806e273f7ad39d12c0/transformed/core-1.12.0/AndroidManifest.xml:28:18-86
 52        android:debuggable="true"
 53        android:extractNativeLibs="false"
 54        android:icon="@drawable/ic_launcher"
@@ -122,109 +122,132 @@
 68            </intent-filter>
 69        </activity>
 70
-71        <service
-71-->[androidx.camera:camera-camera2:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/282175dd8bdc1de94b7b1048f5c1d0e8/transformed/jetified-camera-camera2-1.3.1/AndroidManifest.xml:24:9-33:19
-72            android:name="androidx.camera.core.impl.MetadataHolderService"
-72-->[androidx.camera:camera-camera2:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/282175dd8bdc1de94b7b1048f5c1d0e8/transformed/jetified-camera-camera2-1.3.1/AndroidManifest.xml:25:13-75
-73            android:enabled="false"
-73-->[androidx.camera:camera-camera2:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/282175dd8bdc1de94b7b1048f5c1d0e8/transformed/jetified-camera-camera2-1.3.1/AndroidManifest.xml:26:13-36
-74            android:exported="false" >
-74-->[androidx.camera:camera-camera2:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/282175dd8bdc1de94b7b1048f5c1d0e8/transformed/jetified-camera-camera2-1.3.1/AndroidManifest.xml:27:13-37
-75            <meta-data
-75-->[androidx.camera:camera-camera2:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/282175dd8bdc1de94b7b1048f5c1d0e8/transformed/jetified-camera-camera2-1.3.1/AndroidManifest.xml:30:13-32:89
-76                android:name="androidx.camera.core.impl.MetadataHolderService.DEFAULT_CONFIG_PROVIDER"
-76-->[androidx.camera:camera-camera2:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/282175dd8bdc1de94b7b1048f5c1d0e8/transformed/jetified-camera-camera2-1.3.1/AndroidManifest.xml:31:17-103
-77                android:value="androidx.camera.camera2.Camera2Config$DefaultProvider" />
-77-->[androidx.camera:camera-camera2:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/282175dd8bdc1de94b7b1048f5c1d0e8/transformed/jetified-camera-camera2-1.3.1/AndroidManifest.xml:32:17-86
-78        </service>
+71        <!-- 演示模式 Activity（用于录制AR界面动画） -->
+72        <activity
+72-->/Users/linjunjie/CascadeProjects/RokidAI/android/app/src/main/AndroidManifest.xml:52:9-61:20
+73            android:name="com.rokid.nutrition.demo.DemoActivity"
+73-->/Users/linjunjie/CascadeProjects/RokidAI/android/app/src/main/AndroidManifest.xml:53:13-46
+74            android:exported="true"
+74-->/Users/linjunjie/CascadeProjects/RokidAI/android/app/src/main/AndroidManifest.xml:54:13-36
+75            android:label="VISEAT 演示模式"
+75-->/Users/linjunjie/CascadeProjects/RokidAI/android/app/src/main/AndroidManifest.xml:55:13-40
+76            android:theme="@style/Theme.RokidNutrition" >
+76-->/Users/linjunjie/CascadeProjects/RokidAI/android/app/src/main/AndroidManifest.xml:56:13-56
+77            <intent-filter>
+77-->/Users/linjunjie/CascadeProjects/RokidAI/android/app/src/main/AndroidManifest.xml:57:13-60:29
+78                <action android:name="android.intent.action.MAIN" />
+78-->/Users/linjunjie/CascadeProjects/RokidAI/android/app/src/main/AndroidManifest.xml:46:17-69
+78-->/Users/linjunjie/CascadeProjects/RokidAI/android/app/src/main/AndroidManifest.xml:46:25-66
 79
-80        <activity
-80-->[androidx.compose.ui:ui-test-manifest:1.5.4] /Users/linjunjie/.gradle/caches/transforms-3/6e78813e9bffd2c2a75e45fd8305dc50/transformed/jetified-ui-test-manifest-1.5.4/AndroidManifest.xml:23:9-25:39
-81            android:name="androidx.activity.ComponentActivity"
-81-->[androidx.compose.ui:ui-test-manifest:1.5.4] /Users/linjunjie/.gradle/caches/transforms-3/6e78813e9bffd2c2a75e45fd8305dc50/transformed/jetified-ui-test-manifest-1.5.4/AndroidManifest.xml:24:13-63
-82            android:exported="true" />
-82-->[androidx.compose.ui:ui-test-manifest:1.5.4] /Users/linjunjie/.gradle/caches/transforms-3/6e78813e9bffd2c2a75e45fd8305dc50/transformed/jetified-ui-test-manifest-1.5.4/AndroidManifest.xml:25:13-36
-83        <activity
-83-->[androidx.compose.ui:ui-tooling-android:1.5.4] /Users/linjunjie/.gradle/caches/transforms-3/302289d9f82de1ba5cb1b0f6032a8b32/transformed/jetified-ui-tooling-release/AndroidManifest.xml:23:9-25:39
-84            android:name="androidx.compose.ui.tooling.PreviewActivity"
-84-->[androidx.compose.ui:ui-tooling-android:1.5.4] /Users/linjunjie/.gradle/caches/transforms-3/302289d9f82de1ba5cb1b0f6032a8b32/transformed/jetified-ui-tooling-release/AndroidManifest.xml:24:13-71
-85            android:exported="true" />
-85-->[androidx.compose.ui:ui-tooling-android:1.5.4] /Users/linjunjie/.gradle/caches/transforms-3/302289d9f82de1ba5cb1b0f6032a8b32/transformed/jetified-ui-tooling-release/AndroidManifest.xml:25:13-36
-86
-87        <provider
-87-->[androidx.emoji2:emoji2:1.4.0] /Users/linjunjie/.gradle/caches/transforms-3/8a116d6c90f90674631436edc1f6e8c1/transformed/jetified-emoji2-1.4.0/AndroidManifest.xml:24:9-32:20
-88            android:name="androidx.startup.InitializationProvider"
-88-->[androidx.emoji2:emoji2:1.4.0] /Users/linjunjie/.gradle/caches/transforms-3/8a116d6c90f90674631436edc1f6e8c1/transformed/jetified-emoji2-1.4.0/AndroidManifest.xml:25:13-67
-89            android:authorities="com.rokid.nutrition.androidx-startup"
-89-->[androidx.emoji2:emoji2:1.4.0] /Users/linjunjie/.gradle/caches/transforms-3/8a116d6c90f90674631436edc1f6e8c1/transformed/jetified-emoji2-1.4.0/AndroidManifest.xml:26:13-68
-90            android:exported="false" >
-90-->[androidx.emoji2:emoji2:1.4.0] /Users/linjunjie/.gradle/caches/transforms-3/8a116d6c90f90674631436edc1f6e8c1/transformed/jetified-emoji2-1.4.0/AndroidManifest.xml:27:13-37
-91            <meta-data
-91-->[androidx.emoji2:emoji2:1.4.0] /Users/linjunjie/.gradle/caches/transforms-3/8a116d6c90f90674631436edc1f6e8c1/transformed/jetified-emoji2-1.4.0/AndroidManifest.xml:29:13-31:52
-92                android:name="androidx.emoji2.text.EmojiCompatInitializer"
-92-->[androidx.emoji2:emoji2:1.4.0] /Users/linjunjie/.gradle/caches/transforms-3/8a116d6c90f90674631436edc1f6e8c1/transformed/jetified-emoji2-1.4.0/AndroidManifest.xml:30:17-75
-93                android:value="androidx.startup" />
-93-->[androidx.emoji2:emoji2:1.4.0] /Users/linjunjie/.gradle/caches/transforms-3/8a116d6c90f90674631436edc1f6e8c1/transformed/jetified-emoji2-1.4.0/AndroidManifest.xml:31:17-49
-94            <meta-data
-94-->[androidx.lifecycle:lifecycle-process:2.7.0] /Users/linjunjie/.gradle/caches/transforms-3/ef673f3be81b63a51df09c1e74d09cf4/transformed/jetified-lifecycle-process-2.7.0/AndroidManifest.xml:29:13-31:52
-95                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
-95-->[androidx.lifecycle:lifecycle-process:2.7.0] /Users/linjunjie/.gradle/caches/transforms-3/ef673f3be81b63a51df09c1e74d09cf4/transformed/jetified-lifecycle-process-2.7.0/AndroidManifest.xml:30:17-78
-96                android:value="androidx.startup" />
-96-->[androidx.lifecycle:lifecycle-process:2.7.0] /Users/linjunjie/.gradle/caches/transforms-3/ef673f3be81b63a51df09c1e74d09cf4/transformed/jetified-lifecycle-process-2.7.0/AndroidManifest.xml:31:17-49
-97            <meta-data
-97-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/5075e54ed647344dbc01dc103af60b96/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:29:13-31:52
-98                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
-98-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/5075e54ed647344dbc01dc103af60b96/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:30:17-85
-99                android:value="androidx.startup" />
-99-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/5075e54ed647344dbc01dc103af60b96/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:31:17-49
-100        </provider>
-101
-102        <service
-102-->[androidx.room:room-runtime:2.6.1] /Users/linjunjie/.gradle/caches/transforms-3/0a5328efc1945f93f92ee4f737dc2c1b/transformed/room-runtime-2.6.1/AndroidManifest.xml:24:9-28:63
-103            android:name="androidx.room.MultiInstanceInvalidationService"
-103-->[androidx.room:room-runtime:2.6.1] /Users/linjunjie/.gradle/caches/transforms-3/0a5328efc1945f93f92ee4f737dc2c1b/transformed/room-runtime-2.6.1/AndroidManifest.xml:25:13-74
-104            android:directBootAware="true"
-104-->[androidx.room:room-runtime:2.6.1] /Users/linjunjie/.gradle/caches/transforms-3/0a5328efc1945f93f92ee4f737dc2c1b/transformed/room-runtime-2.6.1/AndroidManifest.xml:26:13-43
-105            android:exported="false" />
-105-->[androidx.room:room-runtime:2.6.1] /Users/linjunjie/.gradle/caches/transforms-3/0a5328efc1945f93f92ee4f737dc2c1b/transformed/room-runtime-2.6.1/AndroidManifest.xml:27:13-37
-106
-107        <receiver
-107-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/5075e54ed647344dbc01dc103af60b96/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:34:9-52:20
-108            android:name="androidx.profileinstaller.ProfileInstallReceiver"
-108-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/5075e54ed647344dbc01dc103af60b96/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:35:13-76
-109            android:directBootAware="false"
-109-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/5075e54ed647344dbc01dc103af60b96/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:36:13-44
-110            android:enabled="true"
-110-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/5075e54ed647344dbc01dc103af60b96/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:37:13-35
-111            android:exported="true"
-111-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/5075e54ed647344dbc01dc103af60b96/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:38:13-36
-112            android:permission="android.permission.DUMP" >
-112-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/5075e54ed647344dbc01dc103af60b96/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:39:13-57
-113            <intent-filter>
-113-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/5075e54ed647344dbc01dc103af60b96/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:40:13-42:29
-114                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
-114-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/5075e54ed647344dbc01dc103af60b96/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:41:17-91
-114-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/5075e54ed647344dbc01dc103af60b96/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:41:25-88
-115            </intent-filter>
-116            <intent-filter>
-116-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/5075e54ed647344dbc01dc103af60b96/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:43:13-45:29
-117                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
-117-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/5075e54ed647344dbc01dc103af60b96/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:44:17-85
-117-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/5075e54ed647344dbc01dc103af60b96/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:44:25-82
-118            </intent-filter>
-119            <intent-filter>
-119-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/5075e54ed647344dbc01dc103af60b96/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:46:13-48:29
-120                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
-120-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/5075e54ed647344dbc01dc103af60b96/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:47:17-88
-120-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/5075e54ed647344dbc01dc103af60b96/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:47:25-85
-121            </intent-filter>
-122            <intent-filter>
-122-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/5075e54ed647344dbc01dc103af60b96/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:49:13-51:29
-123                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
-123-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/5075e54ed647344dbc01dc103af60b96/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:50:17-95
-123-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/5075e54ed647344dbc01dc103af60b96/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:50:25-92
-124            </intent-filter>
-125        </receiver>
-126    </application>
-127
-128</manifest>
+80                <category android:name="android.intent.category.DEFAULT" />
+80-->/Users/linjunjie/CascadeProjects/RokidAI/android/app/src/main/AndroidManifest.xml:59:17-76
+80-->/Users/linjunjie/CascadeProjects/RokidAI/android/app/src/main/AndroidManifest.xml:59:27-73
+81            </intent-filter>
+82        </activity>
+83
+84        <service
+84-->[androidx.camera:camera-camera2:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/156cdafded54621d489f31fd428cad55/transformed/jetified-camera-camera2-1.3.1/AndroidManifest.xml:24:9-33:19
+85            android:name="androidx.camera.core.impl.MetadataHolderService"
+85-->[androidx.camera:camera-camera2:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/156cdafded54621d489f31fd428cad55/transformed/jetified-camera-camera2-1.3.1/AndroidManifest.xml:25:13-75
+86            android:enabled="false"
+86-->[androidx.camera:camera-camera2:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/156cdafded54621d489f31fd428cad55/transformed/jetified-camera-camera2-1.3.1/AndroidManifest.xml:26:13-36
+87            android:exported="false" >
+87-->[androidx.camera:camera-camera2:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/156cdafded54621d489f31fd428cad55/transformed/jetified-camera-camera2-1.3.1/AndroidManifest.xml:27:13-37
+88            <meta-data
+88-->[androidx.camera:camera-camera2:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/156cdafded54621d489f31fd428cad55/transformed/jetified-camera-camera2-1.3.1/AndroidManifest.xml:30:13-32:89
+89                android:name="androidx.camera.core.impl.MetadataHolderService.DEFAULT_CONFIG_PROVIDER"
+89-->[androidx.camera:camera-camera2:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/156cdafded54621d489f31fd428cad55/transformed/jetified-camera-camera2-1.3.1/AndroidManifest.xml:31:17-103
+90                android:value="androidx.camera.camera2.Camera2Config$DefaultProvider" />
+90-->[androidx.camera:camera-camera2:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/156cdafded54621d489f31fd428cad55/transformed/jetified-camera-camera2-1.3.1/AndroidManifest.xml:32:17-86
+91        </service>
+92
+93        <activity
+93-->[androidx.compose.ui:ui-test-manifest:1.5.4] /Users/linjunjie/.gradle/caches/transforms-3/10b2612b0a5ac59de4448e68e9a52c54/transformed/jetified-ui-test-manifest-1.5.4/AndroidManifest.xml:23:9-25:39
+94            android:name="androidx.activity.ComponentActivity"
+94-->[androidx.compose.ui:ui-test-manifest:1.5.4] /Users/linjunjie/.gradle/caches/transforms-3/10b2612b0a5ac59de4448e68e9a52c54/transformed/jetified-ui-test-manifest-1.5.4/AndroidManifest.xml:24:13-63
+95            android:exported="true" />
+95-->[androidx.compose.ui:ui-test-manifest:1.5.4] /Users/linjunjie/.gradle/caches/transforms-3/10b2612b0a5ac59de4448e68e9a52c54/transformed/jetified-ui-test-manifest-1.5.4/AndroidManifest.xml:25:13-36
+96        <activity
+96-->[androidx.compose.ui:ui-tooling-android:1.5.4] /Users/linjunjie/.gradle/caches/transforms-3/0c2637342d375527aebeb55e9848d96d/transformed/jetified-ui-tooling-release/AndroidManifest.xml:23:9-25:39
+97            android:name="androidx.compose.ui.tooling.PreviewActivity"
+97-->[androidx.compose.ui:ui-tooling-android:1.5.4] /Users/linjunjie/.gradle/caches/transforms-3/0c2637342d375527aebeb55e9848d96d/transformed/jetified-ui-tooling-release/AndroidManifest.xml:24:13-71
+98            android:exported="true" />
+98-->[androidx.compose.ui:ui-tooling-android:1.5.4] /Users/linjunjie/.gradle/caches/transforms-3/0c2637342d375527aebeb55e9848d96d/transformed/jetified-ui-tooling-release/AndroidManifest.xml:25:13-36
+99
+100        <provider
+100-->[androidx.emoji2:emoji2:1.4.0] /Users/linjunjie/.gradle/caches/transforms-3/39112ba7bc5fbcdba0622bae633cb458/transformed/jetified-emoji2-1.4.0/AndroidManifest.xml:24:9-32:20
+101            android:name="androidx.startup.InitializationProvider"
+101-->[androidx.emoji2:emoji2:1.4.0] /Users/linjunjie/.gradle/caches/transforms-3/39112ba7bc5fbcdba0622bae633cb458/transformed/jetified-emoji2-1.4.0/AndroidManifest.xml:25:13-67
+102            android:authorities="com.rokid.nutrition.androidx-startup"
+102-->[androidx.emoji2:emoji2:1.4.0] /Users/linjunjie/.gradle/caches/transforms-3/39112ba7bc5fbcdba0622bae633cb458/transformed/jetified-emoji2-1.4.0/AndroidManifest.xml:26:13-68
+103            android:exported="false" >
+103-->[androidx.emoji2:emoji2:1.4.0] /Users/linjunjie/.gradle/caches/transforms-3/39112ba7bc5fbcdba0622bae633cb458/transformed/jetified-emoji2-1.4.0/AndroidManifest.xml:27:13-37
+104            <meta-data
+104-->[androidx.emoji2:emoji2:1.4.0] /Users/linjunjie/.gradle/caches/transforms-3/39112ba7bc5fbcdba0622bae633cb458/transformed/jetified-emoji2-1.4.0/AndroidManifest.xml:29:13-31:52
+105                android:name="androidx.emoji2.text.EmojiCompatInitializer"
+105-->[androidx.emoji2:emoji2:1.4.0] /Users/linjunjie/.gradle/caches/transforms-3/39112ba7bc5fbcdba0622bae633cb458/transformed/jetified-emoji2-1.4.0/AndroidManifest.xml:30:17-75
+106                android:value="androidx.startup" />
+106-->[androidx.emoji2:emoji2:1.4.0] /Users/linjunjie/.gradle/caches/transforms-3/39112ba7bc5fbcdba0622bae633cb458/transformed/jetified-emoji2-1.4.0/AndroidManifest.xml:31:17-49
+107            <meta-data
+107-->[androidx.lifecycle:lifecycle-process:2.7.0] /Users/linjunjie/.gradle/caches/transforms-3/1d585f56634a2fb3e873623c36785c68/transformed/jetified-lifecycle-process-2.7.0/AndroidManifest.xml:29:13-31:52
+108                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
+108-->[androidx.lifecycle:lifecycle-process:2.7.0] /Users/linjunjie/.gradle/caches/transforms-3/1d585f56634a2fb3e873623c36785c68/transformed/jetified-lifecycle-process-2.7.0/AndroidManifest.xml:30:17-78
+109                android:value="androidx.startup" />
+109-->[androidx.lifecycle:lifecycle-process:2.7.0] /Users/linjunjie/.gradle/caches/transforms-3/1d585f56634a2fb3e873623c36785c68/transformed/jetified-lifecycle-process-2.7.0/AndroidManifest.xml:31:17-49
+110            <meta-data
+110-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/a4182653ed45d69f380a01aedc2d5454/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:29:13-31:52
+111                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
+111-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/a4182653ed45d69f380a01aedc2d5454/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:30:17-85
+112                android:value="androidx.startup" />
+112-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/a4182653ed45d69f380a01aedc2d5454/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:31:17-49
+113        </provider>
+114
+115        <service
+115-->[androidx.room:room-runtime:2.6.1] /Users/linjunjie/.gradle/caches/transforms-3/9cb7db0939538b1d5bfe76aed9f2ee2b/transformed/room-runtime-2.6.1/AndroidManifest.xml:24:9-28:63
+116            android:name="androidx.room.MultiInstanceInvalidationService"
+116-->[androidx.room:room-runtime:2.6.1] /Users/linjunjie/.gradle/caches/transforms-3/9cb7db0939538b1d5bfe76aed9f2ee2b/transformed/room-runtime-2.6.1/AndroidManifest.xml:25:13-74
+117            android:directBootAware="true"
+117-->[androidx.room:room-runtime:2.6.1] /Users/linjunjie/.gradle/caches/transforms-3/9cb7db0939538b1d5bfe76aed9f2ee2b/transformed/room-runtime-2.6.1/AndroidManifest.xml:26:13-43
+118            android:exported="false" />
+118-->[androidx.room:room-runtime:2.6.1] /Users/linjunjie/.gradle/caches/transforms-3/9cb7db0939538b1d5bfe76aed9f2ee2b/transformed/room-runtime-2.6.1/AndroidManifest.xml:27:13-37
+119
+120        <receiver
+120-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/a4182653ed45d69f380a01aedc2d5454/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:34:9-52:20
+121            android:name="androidx.profileinstaller.ProfileInstallReceiver"
+121-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/a4182653ed45d69f380a01aedc2d5454/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:35:13-76
+122            android:directBootAware="false"
+122-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/a4182653ed45d69f380a01aedc2d5454/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:36:13-44
+123            android:enabled="true"
+123-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/a4182653ed45d69f380a01aedc2d5454/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:37:13-35
+124            android:exported="true"
+124-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/a4182653ed45d69f380a01aedc2d5454/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:38:13-36
+125            android:permission="android.permission.DUMP" >
+125-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/a4182653ed45d69f380a01aedc2d5454/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:39:13-57
+126            <intent-filter>
+126-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/a4182653ed45d69f380a01aedc2d5454/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:40:13-42:29
+127                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
+127-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/a4182653ed45d69f380a01aedc2d5454/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:41:17-91
+127-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/a4182653ed45d69f380a01aedc2d5454/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:41:25-88
+128            </intent-filter>
+129            <intent-filter>
+129-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/a4182653ed45d69f380a01aedc2d5454/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:43:13-45:29
+130                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
+130-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/a4182653ed45d69f380a01aedc2d5454/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:44:17-85
+130-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/a4182653ed45d69f380a01aedc2d5454/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:44:25-82
+131            </intent-filter>
+132            <intent-filter>
+132-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/a4182653ed45d69f380a01aedc2d5454/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:46:13-48:29
+133                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
+133-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/a4182653ed45d69f380a01aedc2d5454/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:47:17-88
+133-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/a4182653ed45d69f380a01aedc2d5454/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:47:25-85
+134            </intent-filter>
+135            <intent-filter>
+135-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/a4182653ed45d69f380a01aedc2d5454/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:49:13-51:29
+136                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
+136-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/a4182653ed45d69f380a01aedc2d5454/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:50:17-95
+136-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/linjunjie/.gradle/caches/transforms-3/a4182653ed45d69f380a01aedc2d5454/transformed/jetified-profileinstaller-1.3.1/AndroidManifest.xml:50:25-92
+137            </intent-filter>
+138        </receiver>
+139    </application>
+140
+141</manifest>

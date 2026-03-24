@@ -31,6 +31,7 @@ class UserManager private constructor(private val context: Context) {
         private const val KEY_AUTH_TOKEN = "auth_token"
         private const val KEY_CURRENT_SESSION_ID = "current_session_id"
         private const val KEY_IS_REGISTERED = "is_registered"
+        private const val KEY_ONBOARDING_COMPLETED_LOCALLY = "onboarding_completed_locally"
         
         @Volatile
         private var instance: UserManager? = null
@@ -54,13 +55,17 @@ class UserManager private constructor(private val context: Context) {
     private val _isRegistered = MutableStateFlow(false)
     val isRegistered: StateFlow<Boolean> = _isRegistered.asStateFlow()
     
+    private val _isOnboardingCompletedLocally = MutableStateFlow(false)
+    val isOnboardingCompletedLocally: StateFlow<Boolean> = _isOnboardingCompletedLocally.asStateFlow()
+    
     init {
         // 从本地存储恢复状态
         _userId.value = prefs.getString(KEY_USER_ID, null)
         _currentSessionId.value = prefs.getString(KEY_CURRENT_SESSION_ID, null)
         _isRegistered.value = prefs.getBoolean(KEY_IS_REGISTERED, false)
+        _isOnboardingCompletedLocally.value = prefs.getBoolean(KEY_ONBOARDING_COMPLETED_LOCALLY, false)
         
-        Log.d(TAG, "初始化 UserManager: userId=${_userId.value}, sessionId=${_currentSessionId.value}, registered=${_isRegistered.value}")
+        Log.d(TAG, "初始化 UserManager: userId=${_userId.value}, sessionId=${_currentSessionId.value}, registered=${_isRegistered.value}, onboardingLocal=${_isOnboardingCompletedLocally.value}")
     }
     
     /**
@@ -145,6 +150,36 @@ class UserManager private constructor(private val context: Context) {
     }
     
     /**
+     * 标记用户已在本设备完成引导
+     * 
+     * 这个标志独立于数据库中的 isOnboardingCompleted，
+     * 用于确保用户在本设备上真正完成过引导流程
+     */
+    fun setOnboardingCompletedLocally(completed: Boolean) {
+        _isOnboardingCompletedLocally.value = completed
+        prefs.edit().putBoolean(KEY_ONBOARDING_COMPLETED_LOCALLY, completed).apply()
+        Log.d(TAG, "设置 onboardingCompletedLocally: $completed")
+    }
+    
+    /**
+     * 检查用户是否在本设备完成过引导
+     */
+    fun hasCompletedOnboardingLocally(): Boolean {
+        return _isOnboardingCompletedLocally.value
+    }
+    
+    /**
+     * 清除本地引导完成标志
+     * 
+     * 用于清除数据后重新进入引导流程
+     */
+    fun clearOnboardingCompletedLocally() {
+        _isOnboardingCompletedLocally.value = false
+        prefs.edit().putBoolean(KEY_ONBOARDING_COMPLETED_LOCALLY, false).apply()
+        Log.d(TAG, "清除 onboardingCompletedLocally 标志")
+    }
+    
+    /**
      * 保存注册响应
      */
     fun saveRegisterResponse(response: UserRegisterResponse) {
@@ -162,6 +197,7 @@ class UserManager private constructor(private val context: Context) {
         _userId.value = null
         _currentSessionId.value = null
         _isRegistered.value = false
+        _isOnboardingCompletedLocally.value = false
         Log.d(TAG, "清除所有用户数据")
     }
     

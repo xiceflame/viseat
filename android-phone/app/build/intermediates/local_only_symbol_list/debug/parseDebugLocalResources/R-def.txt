@@ -4,6 +4,10 @@ color background
 color connected
 color disconnected
 color error
+color glasses_accent
+color glasses_camera
+color glasses_frame
+color launcher_background
 color on_background
 color on_error
 color on_primary
@@ -14,6 +18,8 @@ color primary_variant
 color secondary
 color surface
 color warning
+drawable ic_glasses
+drawable ic_glasses_rokid
 drawable ic_launcher
 mipmap ic_launcher
 mipmap ic_launcher_round

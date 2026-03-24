@@ -1,14 +1,35 @@
 package com.rokid.nutrition.phone.repository
 
 import com.rokid.nutrition.phone.data.dao.MealSessionDao
+import com.rokid.nutrition.phone.data.dao.MealSnapshotDao
+import com.rokid.nutrition.phone.data.dao.SnapshotFoodDao
 import com.rokid.nutrition.phone.data.entity.MealSessionEntity
+import com.rokid.nutrition.phone.data.entity.SnapshotFoodEntity
 import java.util.*
+
+/**
+ * 今日营养统计数据
+ */
+data class TodayNutritionData(
+    val totalCalories: Double = 0.0,
+    val totalProtein: Double = 0.0,
+    val totalCarbs: Double = 0.0,
+    val totalFat: Double = 0.0,
+    val mealCount: Int = 0,
+    val snackCount: Int = 0,
+    val beverageCount: Int = 0,
+    val dessertCount: Int = 0,
+    val fruitCount: Int = 0,
+    val foods: List<SnapshotFoodEntity> = emptyList()
+)
 
 /**
  * 统计数据仓库
  */
 class StatisticsRepository(
-    private val sessionDao: MealSessionDao
+    private val sessionDao: MealSessionDao,
+    private val snapshotDao: MealSnapshotDao? = null,
+    private val foodDao: SnapshotFoodDao? = null
 ) {
     /**
      * 获取今日热量摄入
@@ -83,6 +104,63 @@ class StatisticsRepository(
         val endOfDay = calendar.timeInMillis
         
         return startOfDay to endOfDay
+    }
+    
+    /**
+     * 获取今日营养数据（从数据库）
+     * 
+     * 包括：总热量、蛋白质、碳水、脂肪、各类食品数量
+     */
+    suspend fun getTodayNutritionData(): TodayNutritionData {
+        if (foodDao == null || snapshotDao == null) {
+            return TodayNutritionData()
+        }
+        
+        val (start, end) = getTodayRange()
+        val foods = foodDao.getFoodsInTimeRange(start, end)
+        
+        // 计算营养总量
+        var totalCalories = 0.0
+        var totalProtein = 0.0
+        var totalCarbs = 0.0
+        var totalFat = 0.0
+        
+        // 按每个食物的 category 统计
+        var mealCount = 0
+        var snackCount = 0
+        var beverageCount = 0
+        var dessertCount = 0
+        var fruitCount = 0
+        
+        foods.forEach { food ->
+            totalCalories += food.caloriesKcal
+            totalProtein += food.proteinG ?: 0.0
+            totalCarbs += food.carbsG ?: 0.0
+            totalFat += food.fatG ?: 0.0
+            
+            // 按食物的 category 分类统计
+            when (food.category?.lowercase() ?: "meal") {
+                "meal" -> mealCount++
+                "snack" -> snackCount++
+                "beverage" -> beverageCount++
+                "dessert" -> dessertCount++
+                "fruit" -> fruitCount++
+                else -> mealCount++  // 默认为正餐
+            }
+        }
+        
+        return TodayNutritionData(
+            totalCalories = totalCalories,
+            totalProtein = totalProtein,
+            totalCarbs = totalCarbs,
+            totalFat = totalFat,
+            mealCount = mealCount,
+            snackCount = snackCount,
+            beverageCount = beverageCount,
+            dessertCount = dessertCount,
+            fruitCount = fruitCount,
+            foods = foods
+        )
     }
 }
 

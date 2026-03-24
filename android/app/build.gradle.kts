@@ -1,6 +1,15 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("io.gitlab.arturbosch.detekt")
+}
+
+// Detekt 配置
+detekt {
+    buildUponDefaultConfig = true
+    allRules = false
+    config.setFrom(files("$rootDir/detekt.yml"))
+    baseline = file("$rootDir/detekt-baseline.xml")
 }
 
 android {
@@ -91,6 +100,9 @@ dependencies {
     implementation("androidx.camera:camera-camera2:$cameraxVersion")
     implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
     implementation("androidx.camera:camera-view:$cameraxVersion")
+
+    // ExifInterface (用于读取图片方向信息)
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
 
     // Charts
     implementation("com.github.PhilJay:MPAndroidChart:v3.1.0")

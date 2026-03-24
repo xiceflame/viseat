@@ -1,0 +1,42 @@
+{
+  "snapshot_id": "demo_meal_middle_001",
+  "session_id": "demo_session_001",
+  "mode": "update",
+  "detection_status": "normal",
+  "remaining": {
+    "foods": [
+      {"name": "wonton", "name_cn": "馄饨", "weight_g": 75, "calories_kcal": 180.0, "protein_g": 6.0, "carbs_g": 22.5, "fat_g": 7.5},
+      {"name": "tempura", "name_cn": "天妇罗", "weight_g": 40, "calories_kcal": 160.0, "protein_g": 4.0, "carbs_g": 16.0, "fat_g": 9.0},
+      {"name": "pancake", "name_cn": "煎饼", "weight_g": 50, "calories_kcal": 129.0, "protein_g": 3.0, "carbs_g": 21.0, "fat_g": 4.0},
+      {"name": "pork", "name_cn": "猪肉", "weight_g": 30, "calories_kcal": 72.0, "protein_g": 2.8, "carbs_g": 0.25, "fat_g": 6.6},
+      {"name": "vegetable", "name_cn": "蔬菜", "weight_g": 20, "calories_kcal": 5.0, "protein_g": 0.6, "carbs_g": 1.0, "fat_g": 0.1},
+      {"name": "noodle", "name_cn": "面条", "weight_g": 150, "calories_kcal": 210.0, "protein_g": 6.0, "carbs_g": 42.0, "fat_g": 1.5}
+    ],
+    "nutrition": {
+      "calories": 756.0,
+      "protein": 22.4,
+      "carbs": 102.75,
+      "fat": 28.7
+    }
+  },
+  "consumed": {
+    "foods": [
+      {"name": "wonton", "name_cn": "馄饨", "weight_g": 75, "calories_kcal": 180.0, "protein_g": 6.0, "carbs_g": 22.5, "fat_g": 7.5},
+      {"name": "tempura", "name_cn": "天妇罗", "weight_g": 40, "calories_kcal": 160.0, "protein_g": 4.0, "carbs_g": 16.0, "fat_g": 9.0},
+      {"name": "pancake", "name_cn": "煎饼", "weight_g": 50, "calories_kcal": 129.0, "protein_g": 3.0, "carbs_g": 21.0, "fat_g": 4.0},
+      {"name": "pork", "name_cn": "猪肉", "weight_g": 30, "calories_kcal": 72.0, "protein_g": 2.8, "carbs_g": 0.25, "fat_g": 6.6},
+      {"name": "vegetable", "name_cn": "蔬菜", "weight_g": 20, "calories_kcal": 5.0, "protein_g": 0.6, "carbs_g": 1.0, "fat_g": 0.1}
+    ],
+    "nutrition": {
+      "calories": 546.0,
+      "protein": 16.4,
+      "carbs": 60.75,
+      "fat": 27.2
+    }
+  },
+  "new_foods": [
+    {"name": "noodle", "name_cn": "面条", "weight_g": 150, "calories_kcal": 210.0}
+  ],
+  "suggestion": "发现新食材: 面条。建议更新基线以获得更准确的热量追踪。",
+  "image_url": "https://viseat.cn/uploads/906cd4eb-d677-4b04-b4ad-a7a953a69b62.jpg"
+}

@@ -56,6 +56,12 @@ class BluetoothManager(private val context: Context) {
         private const val PREFS_NAME = "rokid_bluetooth"
         private const val KEY_SOCKET_UUID = "socket_uuid"
         private const val KEY_MAC_ADDRESS = "mac_address"
+        private const val KEY_DEVICE_NAME = "device_name"
+        private const val KEY_LAST_CONNECT_TIME = "last_connect_time"
+        
+        // 自动重连配置
+        private const val MAX_RECONNECT_ATTEMPTS = 3
+        private const val RECONNECT_DELAY_MS = 2000L
     }
     
     private val cxrApi = CxrApi.getInstance()
@@ -82,9 +88,16 @@ class BluetoothManager(private val context: Context) {
     // 保存的连接信息
     private var socketUuid: String? = null
     private var macAddress: String? = null
+    private var savedDeviceName: String? = null
     
     // 是否启用自动连接
     private var autoConnectEnabled = true
+    
+    // 重连计数器
+    private var reconnectAttempts = 0
+    
+    // 是否正在自动重连
+    private var isAutoReconnecting = false
     
     // BLE 扫描回调
     private val scanCallback = object : ScanCallback() {
@@ -113,8 +126,15 @@ class BluetoothManager(private val context: Context) {
                     _scannedDevices.value = currentList
                     DebugLogger.i(TAG, "发现眼镜设备: $deviceName - ${device.address}")
                     
-                    // 如果是 Glasses 开头的设备，自动连接
-                    if (isGlassesDevice && autoConnectEnabled) {
+                    // 优先连接之前保存的设备（通过设备名称匹配，因为 BLE MAC 地址会随机变化）
+                    val savedDeviceName = prefs.getString(KEY_DEVICE_NAME, null)
+                    if (savedDeviceName != null && deviceName == savedDeviceName && autoConnectEnabled) {
+                        DebugLogger.i(TAG, "发现之前连接过的设备（名称匹配），自动重新配对: $deviceName")
+                        autoConnectEnabled = false
+                        initBluetooth(device)
+                    }
+                    // 如果是 Glasses 开头的设备且没有保存的设备，自动连接
+                    else if (isGlassesDevice && autoConnectEnabled && savedDeviceName == null) {
                         DebugLogger.i(TAG, "自动连接 Glasses 设备: $deviceName")
                         autoConnectEnabled = false  // 防止重复连接
                         initBluetooth(device)
@@ -150,6 +170,10 @@ class BluetoothManager(private val context: Context) {
             Log.d(TAG, "rokidAccount=$rokidAccount")
             Log.d(TAG, "glassesType=$glassesType")
             
+            // 重置重连计数器
+            reconnectAttempts = 0
+            isAutoReconnecting = false
+            
             // 保存连接信息用于后续重连
             socketUuid?.let { 
                 this@BluetoothManager.socketUuid = it
@@ -161,6 +185,9 @@ class BluetoothManager(private val context: Context) {
                 prefs.edit().putString(KEY_MAC_ADDRESS, it).apply()
                 Log.d(TAG, "已保存 macAddress")
             }
+            
+            // 保存连接时间
+            prefs.edit().putLong(KEY_LAST_CONNECT_TIME, System.currentTimeMillis()).apply()
             
             // 配对成功后，使用 connectBluetooth 建立通信连接
             Log.d(TAG, "准备调用 connectWithCredentials()...")
@@ -182,24 +209,41 @@ class BluetoothManager(private val context: Context) {
             DebugLogger.w(TAG, "=== 蓝牙已断开回调 ===")
             _connectionState.value = ConnectionState.Disconnected
             
-            // 断开后清除凭证，因为 socketUuid 可能已失效
-            // 下次连接时会自动重新扫描配对
-            Log.d(TAG, "断开连接，清除凭证以便下次重新配对")
-            clearSavedCredentials()
+            // 断开后只清除 socketUuid，保留 MAC 地址用于下次自动识别设备
+            // socketUuid 在重新安装 APP 后会失效，需要重新配对获取
+            Log.d(TAG, "断开连接，清除 socketUuid 但保留 MAC 地址")
+            socketUuid = null
+            prefs.edit().remove(KEY_SOCKET_UUID).apply()
         }
         
         override fun onFailed(errorCode: ValueUtil.CxrBluetoothErrorCode?) {
             DebugLogger.e(TAG, "=== 蓝牙连接失败 ===")
             DebugLogger.e(TAG, "错误码: ${errorCode?.name}")
+            DebugLogger.e(TAG, "重连尝试次数: $reconnectAttempts / $MAX_RECONNECT_ATTEMPTS")
             
-            // 如果是 SOCKET_CONNECT_FAILED，清除保存的凭证并自动重新扫描配对
+            // 如果是 SOCKET_CONNECT_FAILED，说明 socketUuid 已失效，需要重新配对
             if (errorCode?.name?.contains("SOCKET") == true) {
-                Log.w(TAG, "Socket 连接失败，清除保存的凭证并自动重新扫描")
-                clearSavedCredentials()
-                // 自动重新扫描并配对，而不是显示错误
-                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                    startScan(enableAutoConnect = true)
-                }, 500)
+                Log.w(TAG, "Socket 连接失败，socketUuid 可能已失效")
+                
+                // 清除 socketUuid 但保留 MAC 地址（用于识别设备）
+                socketUuid = null
+                prefs.edit().remove(KEY_SOCKET_UUID).apply()
+                
+                // 自动重新扫描并配对
+                if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                    reconnectAttempts++
+                    isAutoReconnecting = true
+                    Log.d(TAG, "自动重新扫描配对 (第 $reconnectAttempts 次)")
+                    _connectionState.value = ConnectionState.Connecting
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                        startScan(enableAutoConnect = true)
+                    }, RECONNECT_DELAY_MS)
+                } else {
+                    Log.e(TAG, "已达到最大重连次数，停止重连")
+                    isAutoReconnecting = false
+                    reconnectAttempts = 0
+                    _connectionState.value = ConnectionState.Error("连接失败，请手动重新连接")
+                }
             } else {
                 _connectionState.value = ConnectionState.Error("连接失败: ${errorCode?.name ?: "Unknown"}")
             }
@@ -210,6 +254,12 @@ class BluetoothManager(private val context: Context) {
         // 从本地存储恢复连接信息
         socketUuid = prefs.getString(KEY_SOCKET_UUID, null)
         macAddress = prefs.getString(KEY_MAC_ADDRESS, null)
+        savedDeviceName = prefs.getString(KEY_DEVICE_NAME, null)
+        
+        Log.d(TAG, "初始化 BluetoothManager")
+        Log.d(TAG, "已保存的 socketUuid: ${socketUuid?.take(8)}...")
+        Log.d(TAG, "已保存的 macAddress: $macAddress")
+        Log.d(TAG, "已保存的 deviceName: $savedDeviceName")
     }
     
     /**
@@ -278,15 +328,21 @@ class BluetoothManager(private val context: Context) {
     }
     
     /**
-     * 自动连接：先尝试重连已保存的设备，否则扫描并自动连接
+     * 自动连接：智能判断连接策略
+     * 
+     * 策略：
+     * 1. 如果 SDK 已连接，直接返回
+     * 2. 如果有完整凭证（socketUuid + macAddress），尝试快速重连
+     * 3. 如果只有 macAddress（socketUuid 失效），扫描并自动配对该设备
+     * 4. 如果没有任何凭证，扫描并自动连接 Glasses 开头的设备
      */
     fun autoConnect() {
         DebugLogger.i(TAG, "=== autoConnect() 被调用 ===")
         DebugLogger.i(TAG, "当前连接状态: ${_connectionState.value}")
         DebugLogger.i(TAG, "SDK isBluetoothConnected: ${cxrApi.isBluetoothConnected}")
-        DebugLogger.i(TAG, "hasSavedCredentials: ${hasSavedCredentials()}")
-        DebugLogger.i(TAG, "socketUuid: $socketUuid")
+        DebugLogger.i(TAG, "socketUuid: ${socketUuid?.take(8)}...")
         DebugLogger.i(TAG, "macAddress: $macAddress")
+        DebugLogger.i(TAG, "savedDeviceName: $savedDeviceName")
         
         // 如果 SDK 报告已连接，更新状态并返回
         if (cxrApi.isBluetoothConnected) {
@@ -296,19 +352,25 @@ class BluetoothManager(private val context: Context) {
             return
         }
         
-        // 如果正在连接中，不要重复操作
+        // 如果正在连接中或自动重连中，不要重复操作
         if (_connectionState.value is ConnectionState.Connecting || 
-            _connectionState.value is ConnectionState.Scanning) {
-            Log.d(TAG, "正在连接/扫描中，跳过")
+            _connectionState.value is ConnectionState.Scanning ||
+            isAutoReconnecting) {
+            Log.d(TAG, "正在连接/扫描/重连中，跳过")
             return
         }
         
-        // 先尝试使用保存的凭证重连
+        // 策略判断
         if (hasSavedCredentials()) {
-            DebugLogger.i(TAG, "尝试使用保存的凭证重连...")
+            // 有完整凭证，尝试快速重连
+            DebugLogger.i(TAG, "有完整凭证，尝试快速重连...")
             connectWithCredentials()
+        } else if (macAddress != null) {
+            // 只有 MAC 地址（socketUuid 失效），扫描并自动配对
+            DebugLogger.i(TAG, "socketUuid 失效，扫描并重新配对 MAC: $macAddress")
+            startScan(enableAutoConnect = true)
         } else {
-            // 没有保存的凭证，开始扫描并自动连接
+            // 没有任何凭证，扫描并自动连接
             DebugLogger.i(TAG, "没有保存的凭证，开始扫描...")
             startScan(enableAutoConnect = true)
         }
@@ -342,6 +404,15 @@ class BluetoothManager(private val context: Context) {
         Log.d(TAG, "设备地址: ${device.address}")
         Log.d(TAG, "设备类型: ${device.type}")
         Log.d(TAG, "设备绑定状态: ${device.bondState}")
+        
+        // 提前保存设备信息（MAC 地址和名称）
+        // 即使配对失败，下次也能识别这个设备
+        device.name?.let { name ->
+            savedDeviceName = name
+            prefs.edit().putString(KEY_DEVICE_NAME, name).apply()
+        }
+        macAddress = device.address
+        prefs.edit().putString(KEY_MAC_ADDRESS, device.address).apply()
         
         cxrApi.initBluetooth(context, device, bluetoothCallback)
         Log.d(TAG, "initBluetooth() 已调用，等待回调...")
@@ -463,7 +534,7 @@ class BluetoothManager(private val context: Context) {
      * [0] String: 图片格式 = "jpeg"
      * [1] Int32:  数据大小 (bytes)
      * [2] Int64:  时间戳 (毫秒)
-     * [3] Int32:  是否主动拍照 (1=是, 0=否)
+     * [3] Int32:  图片类型: 0=自动拍照, 1=手动拍照, 2=结束用餐拍照
      * [4] Binary: 图片二进制数据
      */
     private fun handleImageReceived(caps: Caps?) {
@@ -474,7 +545,10 @@ class BluetoothManager(private val context: Context) {
             val format = caps.at(0)?.string ?: "jpeg"
             val dataSize = caps.at(1)?.int ?: 0
             val timestamp = caps.at(2)?.long ?: System.currentTimeMillis()
-            val isManualCapture = (caps.at(3)?.int ?: 0) != 0
+            val imageType = caps.at(3)?.int ?: ImageType.MANUAL_CAPTURE
+            
+            // 兼容旧版本：如果 imageType 是 0 或 1，保持原有逻辑
+            val isManualCapture = imageType != ImageType.AUTO_CAPTURE
             
             // 图片二进制数据在 Caps[4]
             val binaryValue = caps.at(4)?.binary ?: run {
@@ -483,13 +557,14 @@ class BluetoothManager(private val context: Context) {
             }
             val imageData = binaryValue.data.copyOfRange(binaryValue.offset, binaryValue.offset + binaryValue.length)
             
-            Log.d(TAG, "收到图片: format=$format, size=${imageData.size}, manual=$isManualCapture")
+            Log.d(TAG, "收到图片: format=$format, size=${imageData.size}, imageType=$imageType (0=自动, 1=手动, 2=结束用餐)")
             
             _receivedImage.tryEmit(ImageData(
                 data = imageData,
                 format = format,
                 timestamp = timestamp,
-                isManualCapture = isManualCapture
+                isManualCapture = isManualCapture,
+                imageType = imageType
             ))
         } catch (e: Exception) {
             Log.e(TAG, "解析图片数据失败", e)
@@ -527,8 +602,12 @@ class BluetoothManager(private val context: Context) {
      * [3] Float:  碳水化合物 (g)
      * [4] Float:  脂肪 (g)
      * [5] String: LLM 建议文本
+     * [6] String: 食物类型 (meal/snack/beverage/dessert/fruit)
+     * 
+     * @param result 营养结果
+     * @param speakResult 是否通过 TTS 播报结果（默认 true）
      */
-    fun sendNutritionResult(result: NutritionResult) {
+    fun sendNutritionResult(result: NutritionResult, speakResult: Boolean = true) {
         val caps = Caps().apply {
             write(result.foodName)
             writeFloat(result.calories.toFloat())
@@ -536,9 +615,30 @@ class BluetoothManager(private val context: Context) {
             writeFloat(result.carbs.toFloat())
             writeFloat(result.fat.toFloat())
             write(result.suggestion)
+            write(result.category)  // 新增：食物类型
         }
         cxrApi.sendCustomCmd(Config.MsgName.RESULT, caps)
-        Log.d(TAG, "发送营养结果: ${result.foodName}")
+        Log.d(TAG, "发送营养结果: ${result.foodName}, category=${result.category}")
+        
+        // 通过 SDK 发送 TTS 到眼镜播报
+        if (speakResult) {
+            val ttsText = buildTtsText(result)
+            sendGlobalTts(ttsText)
+        }
+    }
+    
+    /**
+     * 构建 TTS 播报文本
+     */
+    private fun buildTtsText(result: NutritionResult): String {
+        val caloriesInt = result.calories.toInt()
+        val suggestion = result.suggestion.takeIf { it.isNotBlank() }
+        
+        return if (suggestion != null) {
+            "${result.foodName}，${caloriesInt}千卡。$suggestion"
+        } else {
+            "${result.foodName}，${caloriesInt}千卡"
+        }
     }
     
     /**
@@ -617,6 +717,39 @@ class BluetoothManager(private val context: Context) {
             foods.size == 1 -> foods[0].dishName
             foods.size == 2 -> "${foods[0].dishName} · ${foods[1].dishName}"
             else -> "${foods[0].dishName}等${foods.size}道菜"
+        }
+    }
+    
+    /**
+     * 同步个性化建议到眼镜
+     * 
+     * 眼镜端会在分析等待阶段显示这条建议
+     * 
+     * Caps 结构:
+     * [0] String: 建议内容
+     * [1] String: 建议类型 (nutrition/timing/habit/warning/encouragement)
+     * 
+     * @param tipContent 建议内容
+     * @param tipCategory 建议类型
+     * @return true 发送成功
+     */
+    fun syncPersonalizedTip(tipContent: String, tipCategory: String = "nutrition"): Boolean {
+        if (!isConnected()) {
+            Log.w(TAG, "眼镜未连接，跳过同步个性化建议")
+            return false
+        }
+        
+        try {
+            val caps = Caps().apply {
+                write(tipContent)
+                write(tipCategory)
+            }
+            cxrApi.sendCustomCmd(Config.MsgName.PERSONALIZED_TIP, caps)
+            Log.d(TAG, "同步个性化建议: [$tipCategory] $tipContent")
+            return true
+        } catch (e: Exception) {
+            Log.e(TAG, "同步个性化建议失败", e)
+            return false
         }
     }
     
@@ -996,7 +1129,21 @@ class BluetoothManager(private val context: Context) {
         CALCULATING(3, "热量计算中..."),
         COMPLETE(4, "识别完成"),
         ERROR(5, "识别失败"),
-        NOT_FOOD(6, "未检测到食物")
+        NOT_FOOD(6, "未识别到餐品")
+    }
+    
+    /**
+     * 错误类型枚举 - 用于发送具体错误信息到眼镜
+     */
+    enum class ErrorType(val code: Int, val defaultMessage: String, val ttsMessage: String) {
+        NETWORK_ERROR(101, "网络连接失败", "网络连接失败，请检查手机网络"),
+        NETWORK_TIMEOUT(102, "网络连接超时", "网络连接超时，请稍后重试"),
+        SERVER_BUSY(103, "服务器繁忙", "服务器正在繁忙，请稍后重试"),
+        SERVER_ERROR(104, "服务器错误", "服务器错误，请稍后重试"),
+        NOT_FOOD(105, "未识别到餐品", "未识别到餐品，请重新拍摄"),
+        IMAGE_UPLOAD_FAILED(106, "图片上传失败", "图片上传失败，请重试"),
+        AI_ANALYSIS_FAILED(107, "AI分析失败", "AI分析失败，请重试"),
+        UNKNOWN_ERROR(199, "未知错误", "识别失败，请重试")
     }
     
     /**
@@ -1027,9 +1174,10 @@ class BluetoothManager(private val context: Context) {
     }
     
     /**
-     * 通知眼镜上传开始
+     * 通知眼镜上传开始（同时播报 TTS）
      */
     fun notifyUploading(): Boolean {
+        sendGlobalTts("已拍摄，正在分析")
         return sendProcessingPhase(ProcessingPhase.UPLOADING)
     }
     
@@ -1060,6 +1208,80 @@ class BluetoothManager(private val context: Context) {
     fun notifyNotFood(): Boolean {
         sendProcessingPhase(ProcessingPhase.NOT_FOOD)
         // 同时调用 SDK 的 AI 错误通知
+        return notifyAiError()
+    }
+    
+    /**
+     * 发送具体错误信息到眼镜
+     * 
+     * 使用 ERROR 阶段代码，但携带具体的错误消息
+     * 眼镜端会根据消息内容播报具体原因
+     * 
+     * @param errorType 错误类型
+     * @param customMessage 自定义消息（可选，默认使用 errorType 的 defaultMessage）
+     */
+    fun sendError(errorType: ErrorType, customMessage: String? = null): Boolean {
+        val message = customMessage ?: errorType.defaultMessage
+        try {
+            val caps = Caps().apply {
+                write(ProcessingPhase.ERROR.code.toString())
+                write(message)
+            }
+            cxrApi.sendCustomCmd(Config.MsgName.PROCESSING_PHASE, caps)
+            Log.d(TAG, "发送错误信息: ${errorType.name} - $message")
+            
+            // 同时发送 TTS 到眼镜播报具体原因
+            sendGlobalTts(errorType.ttsMessage)
+            
+            return true
+        } catch (e: Exception) {
+            Log.e(TAG, "发送错误信息失败", e)
+            return false
+        }
+    }
+    
+    /**
+     * 通知网络错误
+     */
+    fun notifyNetworkError(): Boolean {
+        sendError(ErrorType.NETWORK_ERROR)
+        return notifyNoNetwork()
+    }
+    
+    /**
+     * 通知网络超时
+     */
+    fun notifyNetworkTimeout(): Boolean {
+        return sendError(ErrorType.NETWORK_TIMEOUT)
+    }
+    
+    /**
+     * 通知服务器繁忙
+     */
+    fun notifyServerBusy(): Boolean {
+        return sendError(ErrorType.SERVER_BUSY)
+    }
+    
+    /**
+     * 通知服务器错误
+     */
+    fun notifyServerError(): Boolean {
+        return sendError(ErrorType.SERVER_ERROR)
+    }
+    
+    /**
+     * 通知图片上传失败
+     */
+    fun notifyImageUploadFailed(): Boolean {
+        sendError(ErrorType.IMAGE_UPLOAD_FAILED)
+        return notifyPicUploadError()
+    }
+    
+    /**
+     * 通知 AI 分析失败（带具体原因）
+     */
+    fun notifyAiAnalysisFailed(reason: String? = null): Boolean {
+        sendError(ErrorType.AI_ANALYSIS_FAILED, reason)
         return notifyAiError()
     }
     
@@ -1114,4 +1336,23 @@ class BluetoothManager(private val context: Context) {
      * 获取保存的设备 MAC 地址
      */
     fun getSavedMacAddress(): String? = macAddress
+    
+    /**
+     * 获取保存的设备名称
+     */
+    fun getSavedDeviceName(): String? = savedDeviceName
+    
+    /**
+     * 检查是否有保存的设备信息（用于判断是否曾经连接过）
+     */
+    fun hasSavedDevice(): Boolean = macAddress != null
+    
+    /**
+     * 重置重连状态（用于手动触发连接时）
+     */
+    fun resetReconnectState() {
+        reconnectAttempts = 0
+        isAutoReconnecting = false
+        autoConnectEnabled = true
+    }
 }

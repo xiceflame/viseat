@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -123,21 +124,27 @@ fun EnhancedFoodDetailScreen(
     onDeleteFood: () -> Unit,
     onDownloadPhoto: () -> Unit,
     onTriggerSync: () -> Unit,
+    onAddFood: (String, Double) -> Unit = { _, _ -> },  // 食物名称, 重量(克)
+    onClearSaveSuccess: () -> Unit = {},
+    onClearDownloadSuccess: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showPhotoViewer by remember { mutableStateOf(false) }
+    var showAddFoodDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     
-    // 显示成功/错误消息
+    // 显示成功/错误消息 - 显示后立即清除状态,避免重复弹出
     LaunchedEffect(uiState.saveSuccess) {
         if (uiState.saveSuccess) {
             snackbarHostState.showSnackbar("保存成功")
+            onClearSaveSuccess()
         }
     }
     
     LaunchedEffect(uiState.downloadSuccess) {
         if (uiState.downloadSuccess) {
             snackbarHostState.showSnackbar("已保存到相册")
+            onClearDownloadSuccess()
         }
     }
     
@@ -235,6 +242,25 @@ fun EnhancedFoodDetailScreen(
                             Spacer(modifier = Modifier.height(12.dp))
                         }
                     }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    // 新增食物按钮
+                    OutlinedButton(
+                        onClick = { showAddFoodDialog = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.primary
+                        )
+                    ) {
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("新增食物")
+                    }
                 }
             }
         }
@@ -259,6 +285,18 @@ fun EnhancedFoodDetailScreen(
             onDelete = onDeleteFood,
             isLoading = uiState.isLoading,
             validationErrors = uiState.validationErrors
+        )
+    }
+    
+    // 新增食物对话框
+    if (showAddFoodDialog) {
+        AddFoodDialog(
+            onAdd = { name, weight ->
+                onAddFood(name, weight)
+                showAddFoodDialog = false
+            },
+            onDismiss = { showAddFoodDialog = false },
+            isLoading = uiState.isLoading
         )
     }
 }
@@ -938,4 +976,124 @@ private fun IngredientItem(ingredient: com.rokid.nutrition.phone.network.model.I
             color = Color.Gray
         )
     }
+}
+
+/**
+ * 新增食物对话框
+ */
+@Composable
+private fun AddFoodDialog(
+    onAdd: (name: String, weight: Double) -> Unit,
+    onDismiss: () -> Unit,
+    isLoading: Boolean = false
+) {
+    var foodName by remember { mutableStateOf("") }
+    var weightText by remember { mutableStateOf("100") }
+    var nameError by remember { mutableStateOf<String?>(null) }
+    var weightError by remember { mutableStateOf<String?>(null) }
+    
+    AlertDialog(
+        onDismissRequest = { if (!isLoading) onDismiss() },
+        icon = {
+            Icon(
+                Icons.Default.Add,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+        },
+        title = {
+            Text("新增食物")
+        },
+        text = {
+            Column {
+                Text(
+                    text = "输入食物名称和重量，系统将自动从云端推算营养数据",
+                    fontSize = 14.sp,
+                    color = Color.Gray
+                )
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // 食物名称输入
+                OutlinedTextField(
+                    value = foodName,
+                    onValueChange = { 
+                        foodName = it
+                        nameError = null
+                    },
+                    label = { Text("食物名称") },
+                    placeholder = { Text("如：米饭、苹果、牛肉") },
+                    singleLine = true,
+                    isError = nameError != null,
+                    supportingText = nameError?.let { { Text(it, color = MaterialTheme.colorScheme.error) } },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                // 重量输入
+                OutlinedTextField(
+                    value = weightText,
+                    onValueChange = { 
+                        weightText = it.filter { c -> c.isDigit() || c == '.' }
+                        weightError = null
+                    },
+                    label = { Text("重量 (克)") },
+                    placeholder = { Text("100") },
+                    singleLine = true,
+                    isError = weightError != null,
+                    supportingText = weightError?.let { { Text(it, color = MaterialTheme.colorScheme.error) } },
+                    trailingIcon = { Text("g", color = Color.Gray) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                
+                if (isLoading) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("正在查询营养数据...", fontSize = 14.sp, color = Color.Gray)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    // 验证输入
+                    var hasError = false
+                    if (foodName.isBlank()) {
+                        nameError = "请输入食物名称"
+                        hasError = true
+                    }
+                    val weight = weightText.toDoubleOrNull()
+                    if (weight == null || weight <= 0) {
+                        weightError = "请输入有效重量"
+                        hasError = true
+                    }
+                    if (!hasError && weight != null) {
+                        onAdd(foodName.trim(), weight)
+                    }
+                },
+                enabled = !isLoading
+            ) {
+                Text("添加")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !isLoading
+            ) {
+                Text("取消")
+            }
+        }
+    )
 }

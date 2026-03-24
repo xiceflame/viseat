@@ -15,6 +15,7 @@ import com.rokid.nutrition.phone.network.model.getFoodType
 import com.rokid.nutrition.phone.repository.DailyNutritionTracker
 import com.rokid.nutrition.phone.repository.MealSessionManager
 import com.rokid.nutrition.phone.repository.MealSessionRepository
+import com.rokid.nutrition.phone.repository.SmartTipsRepository
 import com.rokid.nutrition.phone.repository.UserManager
 import com.rokid.nutrition.phone.repository.UserProfile
 import com.rokid.nutrition.phone.repository.UserProfileRepository
@@ -33,8 +34,12 @@ class HomeViewModel(
     private val userProfileRepository: UserProfileRepository,
     private val mealSessionManager: MealSessionManager,
     private val userManager: UserManager,
-    private val dailyNutritionTracker: DailyNutritionTracker
+    private val dailyNutritionTracker: DailyNutritionTracker,
+    private val onMealEnded: ((String) -> Unit)? = null  // 用餐结束回调，用于刷新个性化建议
 ) : ViewModel() {
+    
+    // 智能提示仓库
+    private val smartTipsRepository = SmartTipsRepository(networkManager)
     
     companion object {
         private const val TAG = "HomeViewModel"
@@ -65,6 +70,62 @@ class HomeViewModel(
         
         // 检查并注册用户
         checkAndRegisterUser()
+        
+        // 监听智能提示状态
+        observeSmartTips()
+        
+        // 加载智能提示
+        loadSmartTips()
+    }
+    
+    /**
+     * 监听智能提示状态变化
+     */
+    private fun observeSmartTips() {
+        viewModelScope.launch {
+            smartTipsRepository.tips.collect { tips ->
+                _uiState.update { it.copy(smartTips = tips) }
+            }
+        }
+        
+        viewModelScope.launch {
+            smartTipsRepository.isLoading.collect { loading ->
+                _uiState.update { it.copy(isLoadingTips = loading) }
+            }
+        }
+    }
+    
+    /**
+     * 加载智能健康提示
+     */
+    fun loadSmartTips(forceRefresh: Boolean = false) {
+        val userId = userManager.getUserId()
+        if (userId == null) {
+            Log.w(TAG, "用户ID为空，无法加载智能提示")
+            return
+        }
+        
+        viewModelScope.launch {
+            smartTipsRepository.fetchTips(userId, forceRefresh)
+        }
+    }
+    
+    /**
+     * 刷新智能健康提示
+     */
+    fun refreshSmartTips() {
+        loadSmartTips(forceRefresh = true)
+    }
+    
+    /**
+     * 用餐结束后刷新智能提示
+     */
+    fun refreshSmartTipsAfterMeal(sessionId: String) {
+        val userId = userManager.getUserId() ?: return
+        
+        viewModelScope.launch {
+            smartTipsRepository.refreshAfterMeal(userId, sessionId)
+        }
     }
     
     /**
@@ -187,9 +248,10 @@ class HomeViewModel(
      * 处理接收到的图片
      * 
      * 处理流程：
-     * 1. 如果有活跃会话 → 使用 analyze_meal_update（带容错）
-     * 2. 如果没有会话 → 使用 vision/analyze（开始识别）
-     * 3. 只有正餐才会激活用餐监测，零食不会
+     * 1. 如果是结束用餐照片 → 使用 analyze_meal_update 分析后自动结束会话
+     * 2. 如果有活跃会话 → 使用 analyze_meal_update（带容错）
+     * 3. 如果没有会话 → 使用 vision/analyze（开始识别）
+     * 4. 只有正餐才会激活用餐监测，零食不会
      */
     private fun handleImageReceived(imageData: ImageData) {
         viewModelScope.launch {
@@ -200,7 +262,11 @@ class HomeViewModel(
             bluetoothManager.notifyUploading()
             
             try {
-                if (mealSessionManager.isActive) {
+                // 检查是否是结束用餐的照片
+                if (imageData.isEndMealCapture) {
+                    Log.d(TAG, "收到结束用餐照片，使用基线对比分析后结束会话")
+                    handleEndMealWithPhoto(imageData)
+                } else if (mealSessionManager.isActive) {
                     // 有活跃会话：使用容错 API
                     handleMealUpdate(imageData)
                 } else {
@@ -213,6 +279,43 @@ class HomeViewModel(
                 _uiState.update { it.copy(isProcessing = false, statusMessage = "处理失败") }
             }
         }
+    }
+    
+    /**
+     * 处理结束用餐的照片
+     * 
+     * 流程：
+     * 1. 上传图片
+     * 2. 使用 analyze_meal_update API 进行基线对比分析
+     * 3. 更新会话数据
+     * 4. 自动结束会话
+     */
+    private suspend fun handleEndMealWithPhoto(imageData: ImageData) {
+        if (!mealSessionManager.isActive) {
+            Log.w(TAG, "没有活跃的用餐会话，直接结束")
+            endMealSession()
+            return
+        }
+        
+        val sessionId = currentSessionId ?: mealSessionManager.state?.sessionId
+        if (sessionId == null) {
+            Log.w(TAG, "会话 ID 为空，直接结束")
+            endMealSession()
+            return
+        }
+        
+        Log.d(TAG, "开始处理结束用餐照片: sessionId=$sessionId")
+        
+        // 先进行用餐更新分析（使用基线对比）
+        try {
+            handleMealUpdate(imageData)
+            Log.d(TAG, "结束用餐照片分析完成，现在结束会话")
+        } catch (e: Exception) {
+            Log.e(TAG, "结束用餐照片分析失败，仍然结束会话", e)
+        }
+        
+        // 无论分析是否成功，都结束会话
+        endMealSession()
     }
     
     /**
@@ -356,6 +459,10 @@ class HomeViewModel(
     private suspend fun startMealSessionInternal(response: com.rokid.nutrition.phone.network.model.VisionAnalyzeResponse, imageUrl: String) {
         val baselineFoods = response.rawLlm.foods.map { it.toBaselineFood() }
         
+        Log.d(TAG, "════════════════════════════════════════")
+        Log.d(TAG, "开始创建用餐会话...")
+        Log.d(TAG, "════════════════════════════════════════")
+        
         // 调用后端创建会话
         val mealResult = networkManager.startMeal("default_user", "lunch", response)
         mealResult.fold(
@@ -377,6 +484,7 @@ class HomeViewModel(
                 Log.d(TAG, "快照已保存: sessionId=${mealResponse.sessionId}, imageUrl=$imageUrl")
                 
                 // 通知眼镜会话已开始
+                Log.d(TAG, "准备发送会话状态到眼镜: active")
                 bluetoothManager.sendSessionStatus(
                     sessionId = mealResponse.sessionId,
                     status = "active",
@@ -386,7 +494,27 @@ class HomeViewModel(
                 Log.d(TAG, "用餐会话已开始: ${mealResponse.sessionId}")
             },
             onFailure = { e ->
-                Log.e(TAG, "创建会话失败", e)
+                Log.e(TAG, "创建会话失败，使用本地会话", e)
+                
+                // 即使后端失败，也创建本地会话并通知眼镜
+                val localSessionId = java.util.UUID.randomUUID().toString()
+                currentSessionId = localSessionId
+                mealSessionManager.startSession(
+                    sessionId = localSessionId,
+                    baselineFoods = baselineFoods,
+                    baselineImageUrl = imageUrl,
+                    baselineNutrition = response.snapshot.nutrition
+                )
+                
+                // 通知眼镜会话已开始（即使后端失败）
+                Log.d(TAG, "准备发送本地会话状态到眼镜: active")
+                bluetoothManager.sendSessionStatus(
+                    sessionId = localSessionId,
+                    status = "active",
+                    totalConsumed = 0.0,
+                    message = "用餐监测已开始"
+                )
+                Log.d(TAG, "本地用餐会话已开始: $localSessionId")
             }
         )
     }
@@ -452,15 +580,22 @@ class HomeViewModel(
                 )
             }
         )
-        // 使用后端返回的 suggestion 字段，如果没有则为空
-        val suggestion = response.rawLlm.suggestion ?: ""
+        // 使用 getEffectiveSuggestion() 方法获取建议（优先顶层，其次 raw_llm）
+        val suggestion = response.getEffectiveSuggestion()
+        // 获取食物类型
+        val category = response.getFoodType().name.lowercase()
+        
+        // 调试日志：检查suggestion来源
+        DebugLogger.d(TAG, "建议来源调试: topLevel='${response.topLevelSuggestion}', rawLlm='${response.rawLlm.suggestion}', effective='$suggestion'")
+        
         return NutritionResult(
             foodName = foodName,
             calories = response.snapshot.nutrition.calories,
             protein = response.snapshot.nutrition.protein,
             carbs = response.snapshot.nutrition.carbs,
             fat = response.snapshot.nutrition.fat,
-            suggestion = suggestion
+            suggestion = suggestion,
+            category = category
         )
     }
     
@@ -490,24 +625,76 @@ class HomeViewModel(
     
     /**
      * 处理分析错误
+     * 
+     * 根据错误类型发送具体的错误信息到眼镜端，
+     * 眼镜端会播报具体的错误原因而不是笼统的"AI助手异常"
      */
     private fun handleAnalysisError(e: Throwable) {
         Log.e(TAG, "分析失败", e)
         val errorMessage = e.message ?: "未知错误"
         
         when {
+            // 未检测到食物
             errorMessage.contains("未检测到食物", ignoreCase = true) ||
-            errorMessage.contains("not food", ignoreCase = true) -> {
+            errorMessage.contains("未识别到餐品", ignoreCase = true) ||
+            errorMessage.contains("not food", ignoreCase = true) ||
+            errorMessage.contains("no food", ignoreCase = true) -> {
                 bluetoothManager.notifyNotFood()
-                _uiState.update { it.copy(isProcessing = false, statusMessage = "未检测到食物") }
+                _uiState.update { it.copy(isProcessing = false, statusMessage = "未识别到餐品") }
             }
+            
+            // 网络超时
+            errorMessage.contains("timeout", ignoreCase = true) ||
+            errorMessage.contains("timed out", ignoreCase = true) ||
+            errorMessage.contains("超时", ignoreCase = true) -> {
+                bluetoothManager.notifyNetworkTimeout()
+                _uiState.update { it.copy(isProcessing = false, statusMessage = "网络连接超时") }
+            }
+            
+            // 网络连接错误
             errorMessage.contains("network", ignoreCase = true) ||
-            errorMessage.contains("timeout", ignoreCase = true) -> {
-                bluetoothManager.notifyNoNetwork()
+            errorMessage.contains("connect", ignoreCase = true) ||
+            errorMessage.contains("Unable to resolve host", ignoreCase = true) ||
+            errorMessage.contains("网络", ignoreCase = true) -> {
+                bluetoothManager.notifyNetworkError()
                 _uiState.update { it.copy(isProcessing = false, statusMessage = "网络连接失败") }
             }
+            
+            // 服务器繁忙 (429 Too Many Requests 或 503 Service Unavailable)
+            errorMessage.contains("429", ignoreCase = true) ||
+            errorMessage.contains("503", ignoreCase = true) ||
+            errorMessage.contains("繁忙", ignoreCase = true) ||
+            errorMessage.contains("busy", ignoreCase = true) ||
+            errorMessage.contains("rate limit", ignoreCase = true) -> {
+                bluetoothManager.notifyServerBusy()
+                _uiState.update { it.copy(isProcessing = false, statusMessage = "服务器繁忙") }
+            }
+            
+            // 服务器错误 (5xx)
+            errorMessage.contains("500", ignoreCase = true) ||
+            errorMessage.contains("502", ignoreCase = true) ||
+            errorMessage.contains("504", ignoreCase = true) ||
+            errorMessage.contains("server error", ignoreCase = true) ||
+            errorMessage.contains("服务器错误", ignoreCase = true) -> {
+                bluetoothManager.notifyServerError()
+                _uiState.update { it.copy(isProcessing = false, statusMessage = "服务器错误") }
+            }
+            
+            // 图片上传失败
+            errorMessage.contains("upload", ignoreCase = true) ||
+            errorMessage.contains("上传", ignoreCase = true) -> {
+                bluetoothManager.notifyImageUploadFailed()
+                _uiState.update { it.copy(isProcessing = false, statusMessage = "图片上传失败") }
+            }
+            
+            // 其他 AI 分析错误
             else -> {
-                bluetoothManager.notifyAiError()
+                // 提取简短的错误原因用于播报
+                val shortReason = when {
+                    errorMessage.length <= 20 -> errorMessage
+                    else -> "请重试"
+                }
+                bluetoothManager.notifyAiAnalysisFailed(shortReason)
                 _uiState.update { it.copy(isProcessing = false, statusMessage = "识别失败") }
             }
         }
@@ -648,6 +835,10 @@ class HomeViewModel(
                         sessionStartTime = null
                     )
                 }
+                
+                // 触发个性化建议刷新
+                onMealEnded?.invoke(sessionId)
+                Log.d(TAG, "已触发个性化建议刷新: sessionId=$sessionId")
             },
             onFailure = { e ->
                 Log.e(TAG, "结束会话失败", e)
@@ -952,10 +1143,16 @@ class HomeViewModel(
                                 )
                             }
                             
-                            // 显示用餐建议（如果有）
-                            response.advice?.let { advice ->
-                                Log.d(TAG, "用餐建议: ${advice.summary}")
-                                _uiState.update { it.copy(statusMessage = advice.summary) }
+                            // 保存建议数据并显示弹窗
+                            Log.d(TAG, "用餐建议: ${response.advice?.summary}")
+                            _uiState.update { 
+                                it.copy(
+                                    showMealEndDialog = true,
+                                    mealSummary = response.mealSummary,
+                                    mealAdvice = response.advice,
+                                    nextMealSuggestion = response.nextMealSuggestion,
+                                    statusMessage = response.advice?.summary ?: "用餐记录已完成"
+                                ) 
                             }
                             
                             // 6. 更新今日摄入统计
@@ -1174,6 +1371,20 @@ class HomeViewModel(
     }
     
     /**
+     * 关闭用餐结束建议弹窗
+     */
+    fun dismissMealEndDialog() {
+        _uiState.update { 
+            it.copy(
+                showMealEndDialog = false,
+                mealSummary = null,
+                mealAdvice = null,
+                nextMealSuggestion = null
+            ) 
+        }
+    }
+    
+    /**
      * 显示删除确认对话框
      */
     fun showDeleteConfirmDialog(session: com.rokid.nutrition.phone.data.entity.MealSessionEntity) {
@@ -1263,6 +1474,86 @@ class HomeViewModel(
         return today.get(java.util.Calendar.YEAR) == target.get(java.util.Calendar.YEAR) &&
                today.get(java.util.Calendar.DAY_OF_YEAR) == target.get(java.util.Calendar.DAY_OF_YEAR)
     }
+    
+    /**
+     * 更新最新识别结果的营养数据
+     * 
+     * 当用户在详情页编辑食物后调用此方法，更新首页显示的总热量
+     * 同时更新识别历史记录中的对应数据
+     * 
+     * @param caloriesDiff 热量差值（正数表示增加，负数表示减少）
+     * @param proteinDiff 蛋白质差值
+     * @param carbsDiff 碳水差值
+     * @param fatDiff 脂肪差值
+     */
+    fun updateLatestResultNutrition(
+        caloriesDiff: Double,
+        proteinDiff: Double,
+        carbsDiff: Double,
+        fatDiff: Double
+    ) {
+        val currentResult = _uiState.value.latestResult ?: return
+        
+        Log.d(TAG, "更新最新识别结果: 热量差值=$caloriesDiff")
+        
+        // 创建更新后的结果
+        val updatedResult = currentResult.copy(
+            calories = (currentResult.calories + caloriesDiff).coerceAtLeast(0.0),
+            protein = (currentResult.protein + proteinDiff).coerceAtLeast(0.0),
+            carbs = (currentResult.carbs + carbsDiff).coerceAtLeast(0.0),
+            fat = (currentResult.fat + fatDiff).coerceAtLeast(0.0)
+        )
+        
+        _uiState.update { it.copy(latestResult = updatedResult) }
+        
+        // 同时更新识别历史记录中最新的一条（如果存在）
+        updateLatestRecognitionHistory(caloriesDiff)
+        
+        Log.d(TAG, "最新识别结果已更新: ${currentResult.calories} -> ${updatedResult.calories}")
+    }
+    
+    /**
+     * 更新识别历史记录中最新的一条
+     */
+    private fun updateLatestRecognitionHistory(caloriesDiff: Double) {
+        val currentHistory = _recognitionHistory.value
+        if (currentHistory.isEmpty()) return
+        
+        // 更新最新的一条记录
+        val updatedHistory = currentHistory.toMutableList()
+        val latestRecord = updatedHistory[0]
+        updatedHistory[0] = latestRecord.copy(
+            totalCalories = (latestRecord.totalCalories + caloriesDiff).coerceAtLeast(0.0)
+        )
+        
+        _recognitionHistory.value = updatedHistory
+        Log.d(TAG, "识别历史已更新: ${latestRecord.totalCalories} -> ${updatedHistory[0].totalCalories}")
+    }
+    
+    /**
+     * 删除食物后更新最新识别结果
+     */
+    fun subtractFromLatestResult(
+        calories: Double,
+        protein: Double,
+        carbs: Double,
+        fat: Double
+    ) {
+        updateLatestResultNutrition(-calories, -protein, -carbs, -fat)
+    }
+    
+    /**
+     * 刷新最近用餐记录
+     * 
+     * 当食物数据被编辑后调用此方法，从数据库重新加载最近用餐记录
+     */
+    fun refreshRecentSessions() {
+        viewModelScope.launch {
+            Log.d(TAG, "刷新最近用餐记录")
+            // 触发数据库重新查询（通过 Flow 自动更新）
+            // 这里不需要额外操作，因为 Navigation.kt 中已经通过 Flow 监听数据库变化
+        }
+    }
 }
 
 /**
@@ -1324,7 +1615,15 @@ data class HomeUiState(
     val showDeviceSelector: Boolean = false,
     val sessionStartTime: Long? = null,  // 用餐开始时间
     val showDeleteDialog: Boolean = false,  // 是否显示删除确认对话框
-    val sessionToDelete: com.rokid.nutrition.phone.data.entity.MealSessionEntity? = null  // 待删除的会话
+    val sessionToDelete: com.rokid.nutrition.phone.data.entity.MealSessionEntity? = null,  // 待删除的会话
+    // 用餐结束建议相关状态
+    val showMealEndDialog: Boolean = false,  // 是否显示用餐结束建议弹窗
+    val mealSummary: com.rokid.nutrition.phone.network.model.MealSummaryResponse? = null,  // 用餐总结
+    val mealAdvice: com.rokid.nutrition.phone.network.model.MealAdviceResponse? = null,  // 详细建议
+    val nextMealSuggestion: com.rokid.nutrition.phone.network.model.NextMealSuggestion? = null,  // 下一餐建议
+    // 智能健康提示相关状态
+    val smartTips: List<com.rokid.nutrition.phone.network.model.PersonalizedTip> = emptyList(),  // 智能提示列表
+    val isLoadingTips: Boolean = false  // 是否正在加载提示
 )
 
 /**

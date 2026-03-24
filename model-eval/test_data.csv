@@ -1,0 +1,11 @@
+id,image,food_name,actual_weight,food_count,ingredients,category,cooking_method
+001,images/001.jpg,西红柿炒鸡蛋,450,1,鸡蛋:150|西红柿:300,meal,stir-fry
+002,images/002.jpg,麻婆豆腐,500,1,豆腐:400|牛肉:100,meal,braise
+003,images/003.jpg,宫保鸡丁,350,1,鸡胸肉:300|花生米:50,meal,stir-fry
+004,images/004.jpg,清蒸鲈鱼,500,1,鲈鱼:500,meal,steam
+005,images/005.jpg,红烧排骨,500,1,排骨:500,meal,braise
+006,images/006.jpg,糖醋里脊,400,1,里脊肉:400,meal,fry
+007,images/007.jpg,可乐鸡翅,500,1,鸡翅:500,meal,braise
+008,images/008.jpg,青椒肉丝,350,1,猪肉:200|青椒:150,meal,stir-fry
+009,images/009.jpg,酸辣土豆丝,300,1,土豆:300,meal,stir-fry
+010,images/010.jpg,蛋炒饭,400,1,米饭:300|鸡蛋:100,meal,stir-fry

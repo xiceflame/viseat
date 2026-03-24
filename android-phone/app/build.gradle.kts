@@ -3,6 +3,15 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
+    id("io.gitlab.arturbosch.detekt")
+}
+
+// Detekt 配置
+detekt {
+    buildUponDefaultConfig = true
+    allRules = false
+    config.setFrom(files("$rootDir/detekt.yml"))
+    baseline = file("$rootDir/detekt-baseline.xml")
 }
 
 android {

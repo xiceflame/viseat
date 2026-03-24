@@ -1,0 +1,133 @@
+# Detekt 配置文件
+# 适用于 RokidAI Android 项目
+
+build:
+  maxIssues: 0
+  excludeCorrectable: false
+
+config:
+  validation: true
+  warningsAsErrors: false
+
+processors:
+  active: true
+
+console-reports:
+  active: true
+
+output-reports:
+  active: true
+
+complexity:
+  active: true
+  LongMethod:
+    active: true
+    threshold: 60
+  LongParameterList:
+    active: true
+    functionThreshold: 8
+    constructorThreshold: 10
+  ComplexMethod:
+    active: true
+    threshold: 15
+  TooManyFunctions:
+    active: true
+    thresholdInFiles: 30
+    thresholdInClasses: 25
+    thresholdInInterfaces: 15
+    thresholdInObjects: 15
+    thresholdInEnums: 10
+
+coroutines:
+  active: true
+  GlobalCoroutineUsage:
+    active: true
+  SuspendFunWithFlowReturnType:
+    active: true
+
+empty-blocks:
+  active: true
+  EmptyCatchBlock:
+    active: true
+    allowedExceptionNameRegex: "_|(ignore|expected).*"
+  EmptyFunctionBlock:
+    active: true
+    ignoreOverridden: true
+
+exceptions:
+  active: true
+  TooGenericExceptionCaught:
+    active: true
+    exceptionNames:
+      - ArrayIndexOutOfBoundsException
+      - Error
+      - Exception
+      - IllegalMonitorStateException
+      - NullPointerException
+      - IndexOutOfBoundsException
+      - RuntimeException
+      - Throwable
+    allowedExceptionNameRegex: "_|(ignore|expected).*"
+
+naming:
+  active: true
+  FunctionNaming:
+    active: true
+    excludes: ['**/test/**', '**/androidTest/**']
+    functionPattern: '[a-z][a-zA-Z0-9]*'
+  VariableNaming:
+    active: true
+    variablePattern: '[a-z][A-Za-z0-9]*'
+    privateVariablePattern: '_?[a-z][A-Za-z0-9]*'
+
+performance:
+  active: true
+  SpreadOperator:
+    active: true
+    excludes: ['**/test/**', '**/androidTest/**']
+
+potential-bugs:
+  active: true
+  UnsafeCast:
+    active: true
+  UselessPostfixExpression:
+    active: true
+
+style:
+  active: true
+  MagicNumber:
+    active: true
+    excludes: ['**/test/**', '**/androidTest/**']
+    ignoreNumbers:
+      - '-1'
+      - '0'
+      - '1'
+      - '2'
+      - '100'
+      - '1000'
+    ignoreHashCodeFunction: true
+    ignorePropertyDeclaration: true
+    ignoreLocalVariableDeclaration: true
+    ignoreConstantDeclaration: true
+    ignoreCompanionObjectPropertyDeclaration: true
+    ignoreAnnotation: true
+    ignoreNamedArgument: true
+    ignoreEnums: true
+  MaxLineLength:
+    active: true
+    maxLineLength: 120
+    excludeCommentStatements: true
+  WildcardImport:
+    active: true
+    excludeImports:
+      - 'java.util.*'
+      - 'kotlinx.android.synthetic.*'
+      - 'androidx.compose.ui.*'
+      - 'androidx.compose.foundation.*'
+      - 'androidx.compose.material3.*'
+      - 'androidx.compose.material.icons.*'
+  UnusedImports:
+    active: true
+  UnusedPrivateMember:
+    active: true
+    allowedNames: "(_|ignored|expected|serialVersionUID)"

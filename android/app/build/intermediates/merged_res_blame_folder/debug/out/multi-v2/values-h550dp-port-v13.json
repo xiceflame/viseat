@@ -4,7 +4,7 @@
             "outputFile": "com.rokid.nutrition.app-mergeDebugResources-68:/values-h550dp-port-v13/values-h550dp-port-v13.xml",
             "map": [
                 {
-                    "source": "/Users/linjunjie/.gradle/caches/transforms-3/184958b59b0b0fbc0694ac3308e227ed/transformed/material-1.11.0/res/values-h550dp-port-v13/values-h550dp-port-v13.xml",
+                    "source": "/Users/linjunjie/.gradle/caches/transforms-3/77eff80ebc61416c2c80ce540b0085c3/transformed/material-1.11.0/res/values-h550dp-port-v13/values-h550dp-port-v13.xml",
                     "from": {
                         "startLines": "2",
                         "startColumns": "4",

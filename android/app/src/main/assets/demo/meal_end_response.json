@@ -1,0 +1,66 @@
+{
+  "snapshot_id": "demo_meal_end_001",
+  "session_id": "demo_session_001",
+  "mode": "end",
+  "meal_completed": true,
+  "remaining_ratio": 0.15,
+  "raw_llm": {
+    "is_food": true,
+    "foods": [
+      {
+        "dish_name": "Wonton Soup",
+        "dish_name_cn": "馄饨汤",
+        "remaining_status": "mostly_eaten",
+        "remaining_weight_g": 15
+      },
+      {
+        "dish_name": "Tempura",
+        "dish_name_cn": "炸物",
+        "remaining_status": "finished",
+        "remaining_weight_g": 0
+      },
+      {
+        "dish_name": "Pancake",
+        "dish_name_cn": "煎饼",
+        "remaining_status": "mostly_eaten",
+        "remaining_weight_g": 10
+      },
+      {
+        "dish_name": "Meat Soup",
+        "dish_name_cn": "肉片汤",
+        "remaining_status": "finished",
+        "remaining_weight_g": 0
+      }
+    ],
+    "suggestion": "用餐完成，摄入适量"
+  },
+  "remaining": {
+    "foods": [
+      {"name": "wonton", "name_cn": "馄饨", "weight_g": 15, "calories_kcal": 36.0, "protein_g": 1.2, "carbs_g": 4.5, "fat_g": 1.5},
+      {"name": "pancake", "name_cn": "煎饼", "weight_g": 10, "calories_kcal": 25.8, "protein_g": 0.6, "carbs_g": 4.2, "fat_g": 0.8}
+    ],
+    "nutrition": {
+      "calories": 61.8,
+      "protein": 1.8,
+      "carbs": 8.7,
+      "fat": 2.3
+    }
+  },
+  "consumed": {
+    "foods": [
+      {"name": "wonton", "name_cn": "馄饨", "weight_g": 135, "calories_kcal": 324.0, "protein_g": 10.8, "carbs_g": 40.5, "fat_g": 13.5},
+      {"name": "tempura", "name_cn": "天妇罗", "weight_g": 80, "calories_kcal": 320.0, "protein_g": 8.0, "carbs_g": 32.0, "fat_g": 18.0},
+      {"name": "pancake", "name_cn": "煎饼", "weight_g": 90, "calories_kcal": 232.2, "protein_g": 5.4, "carbs_g": 37.8, "fat_g": 7.2},
+      {"name": "pork", "name_cn": "猪肉", "weight_g": 60, "calories_kcal": 144.0, "protein_g": 5.6, "carbs_g": 0.5, "fat_g": 13.2},
+      {"name": "vegetable", "name_cn": "蔬菜", "weight_g": 40, "calories_kcal": 10.0, "protein_g": 1.2, "carbs_g": 2.0, "fat_g": 0.2}
+    ],
+    "nutrition": {
+      "calories": 1030.2,
+      "protein": 31.0,
+      "carbs": 112.8,
+      "fat": 52.1
+    }
+  },
+  "suggestion": "用餐完成，摄入适量",
+  "image_url": "https://viseat.cn/uploads/7aa50972-cddc-4485-9361-f5b66afd82d9.jpg"
+}

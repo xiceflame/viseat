@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- 眼镜图标 - 极简线条风格，与 viseat_app_icon 风格统一 -->
+  
+  <!-- 左镜片 - 圆润的方形 -->
+  <rect x="6" y="22" width="22" height="18" rx="6" ry="6" 
+        fill="none" stroke="currentColor" stroke-width="2.5"/>
+  
+  <!-- 右镜片 -->
+  <rect x="36" y="22" width="22" height="18" rx="6" ry="6" 
+        fill="none" stroke="currentColor" stroke-width="2.5"/>
+  
+  <!-- 鼻梁 - 优雅的弧线 -->
+  <path d="M28 28 C30 24, 34 24, 36 28" 
+        fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+  
+  <!-- 左镜腿 -->
+  <path d="M6 26 L2 24" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+  
+  <!-- 右镜腿 -->
+  <path d="M58 26 L62 24" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+</svg>

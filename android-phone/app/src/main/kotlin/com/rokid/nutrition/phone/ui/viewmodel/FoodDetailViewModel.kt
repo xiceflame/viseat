@@ -99,6 +99,15 @@ sealed class FoodDataChangeEvent {
         val fat: Double,
         val mealTimestamp: Long
     ) : FoodDataChangeEvent()
+    
+    data class FoodAdded(
+        val foodId: String,
+        val calories: Double,
+        val protein: Double,
+        val carbs: Double,
+        val fat: Double,
+        val mealTimestamp: Long
+    ) : FoodDataChangeEvent()
 }
 
 /**
@@ -108,7 +117,8 @@ class FoodDetailViewModel(
     private val mealEditRepository: MealEditRepository,
     private val photoStorageRepository: PhotoStorageRepository,
     private val syncManager: SyncManager,
-    private val dailyNutritionTracker: DailyNutritionTracker? = null
+    private val dailyNutritionTracker: DailyNutritionTracker? = null,
+    private val networkManager: com.rokid.nutrition.phone.network.NetworkManager? = null
 ) : ViewModel() {
     
     companion object {
@@ -127,6 +137,9 @@ class FoodDetailViewModel(
     
     // 当前快照的时间戳（用于判断是否是今天的数据）
     private var currentSnapshotTimestamp: Long = 0L
+    
+    // 当前快照ID（用于新增食物）
+    private var currentSnapshotId: String? = null
     
     init {
         // 观察同步状态
@@ -158,7 +171,8 @@ class FoodDetailViewModel(
                 
                 if (snapshotWithFoods != null) {
                     android.util.Log.d("FoodDetailViewModel", "Snapshot found: ${snapshotWithFoods.snapshot.id}, foods: ${snapshotWithFoods.foods.size}")
-                    val photoSource = photoStorageRepository.getPhotoSource(snapshotWithFoods.snapshot.id)
+                    // 使用 sessionId 查询照片源，因为 localImagePath 是保存在 snapshot 中的
+                    val photoSource = photoStorageRepository.getPhotoSource(snapshotWithFoods.snapshot.sessionId)
                     val photoUri = when (photoSource) {
                         is PhotoSource.Local -> photoSource.path
                         is PhotoSource.Remote -> photoSource.url
@@ -166,8 +180,9 @@ class FoodDetailViewModel(
                     }
                     android.util.Log.d("FoodDetailViewModel", "Photo URI: $photoUri")
                     
-                    // 保存快照时间戳
+                    // 保存快照时间戳和ID
                     currentSnapshotTimestamp = snapshotWithFoods.snapshot.capturedAt
+                    currentSnapshotId = snapshotWithFoods.snapshot.id
                     
                     _uiState.update { 
                         it.copy(
@@ -505,4 +520,235 @@ class FoodDetailViewModel(
             }
         }
     }
+    
+    /**
+     * 新增食物
+     * 
+     * @param foodName 食物名称
+     * @param weightG 重量(克)
+     */
+    fun addFood(foodName: String, weightG: Double) {
+        val snapshotId = currentSnapshotId ?: return
+        
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            
+            try {
+                // 调用 chatNutrition API 获取营养数据
+                val nutritionData = queryNutritionFromApi(foodName, weightG)
+                
+                val (calories, protein, carbs, fat, category) = nutritionData
+                
+                // 生成新的食物 ID
+                val newFoodId = "${snapshotId}_manual_${System.currentTimeMillis()}"
+                
+                // 创建新的食物实体
+                val newFood = SnapshotFoodEntity(
+                    id = newFoodId,
+                    snapshotId = snapshotId,
+                    name = foodName,
+                    chineseName = foodName,
+                    category = category,
+                    weightG = weightG,
+                    caloriesKcal = calories,
+                    proteinG = protein,
+                    carbsG = carbs,
+                    fatG = fat,
+                    confidence = 0.9,
+                    cookingMethod = null,
+                    originalWeightG = weightG,
+                    isEdited = false
+                )
+                
+                // 保存到数据库
+                val result = mealEditRepository.addFoodItem(snapshotId, newFood)
+                
+                result.fold(
+                    onSuccess = { savedFood ->
+                        // 更新今日营养统计
+                        dailyNutritionTracker?.updateDailyTotals(
+                            com.rokid.nutrition.phone.network.model.NutritionTotal(
+                                calories = calories,
+                                protein = protein,
+                                carbs = carbs,
+                                fat = fat
+                            )
+                        )
+                        
+                        // 发送数据变化事件
+                        _dataChangeEvent.emit(
+                            FoodDataChangeEvent.FoodAdded(
+                                foodId = newFoodId,
+                                calories = calories,
+                                protein = protein,
+                                carbs = carbs,
+                                fat = fat,
+                                mealTimestamp = currentSnapshotTimestamp
+                            )
+                        )
+                        
+                        // 更新本地列表
+                        val updatedFoods = _uiState.value.foods + EditableFoodItem.fromEntity(savedFood)
+                        
+                        _uiState.update { 
+                            it.copy(
+                                foods = updatedFoods,
+                                isLoading = false,
+                                saveSuccess = true
+                            )
+                        }
+                        
+                        Log.d(TAG, "新增食物成功: $foodName, ${weightG}g, ${calories}kcal (来自API)")
+                    },
+                    onFailure = { error ->
+                        _uiState.update { 
+                            it.copy(
+                                isLoading = false,
+                                error = "添加失败: ${error.message}"
+                            )
+                        }
+                    }
+                )
+            } catch (e: Exception) {
+                _uiState.update { 
+                    it.copy(
+                        isLoading = false,
+                        error = "添加失败: ${e.message}"
+                    )
+                }
+            }
+        }
+    }
+    
+    /**
+     * 从 chatNutrition API 查询营养数据
+     * 
+     * @return (calories, protein, carbs, fat, category)
+     */
+    private suspend fun queryNutritionFromApi(foodName: String, weightG: Double): NutritionQueryResult {
+        // 构建查询问题
+        val question = "${weightG.toInt()}克${foodName}的热量、蛋白质、碳水化合物和脂肪分别是多少？请用数字回答，格式：热量X千卡，蛋白质Xg，碳水Xg，脂肪Xg"
+        
+        // 调用 API
+        val result = networkManager?.chatNutrition(question)
+        
+        if (result?.isSuccess == true) {
+            val response = result.getOrNull()
+            val answer = response?.answer ?: ""
+            Log.d(TAG, "chatNutrition 响应: $answer")
+            
+            // 解析响应文本
+            return parseNutritionFromText(answer, foodName, weightG)
+        }
+        
+        // API 调用失败，使用估算值
+        Log.w(TAG, "chatNutrition API 调用失败，使用估算值")
+        return estimateNutrition(foodName, weightG)
+    }
+    
+    /**
+     * 解析文本中的营养数据
+     */
+    private fun parseNutritionFromText(text: String, foodName: String, weightG: Double): NutritionQueryResult {
+        try {
+            // 提取热量 (支持多种格式: "热量150千卡", "150kcal", "150大卡")
+            val caloriesRegex = """热量[：:]*\s*(\d+(?:\.\d+)?)\s*(?:千卡|大卡|kcal)?|(\d+(?:\.\d+)?)\s*(?:千卡|大卡|kcal)""".toRegex(RegexOption.IGNORE_CASE)
+            val caloriesMatch = caloriesRegex.find(text)
+            val calories = caloriesMatch?.groupValues?.filterNot { it.isEmpty() }?.lastOrNull()?.toDoubleOrNull()
+            
+            // 提取蛋白质
+            val proteinRegex = """蛋白质[：:]*\s*(\d+(?:\.\d+)?)\s*g?|蛋白[：:]*\s*(\d+(?:\.\d+)?)\s*g?""".toRegex(RegexOption.IGNORE_CASE)
+            val proteinMatch = proteinRegex.find(text)
+            val protein = proteinMatch?.groupValues?.filterNot { it.isEmpty() }?.lastOrNull()?.toDoubleOrNull()
+            
+            // 提取碳水化合物
+            val carbsRegex = """碳水[化合物]*[：:]*\s*(\d+(?:\.\d+)?)\s*g?""".toRegex(RegexOption.IGNORE_CASE)
+            val carbsMatch = carbsRegex.find(text)
+            val carbs = carbsMatch?.groupValues?.filterNot { it.isEmpty() }?.lastOrNull()?.toDoubleOrNull()
+            
+            // 提取脂肪
+            val fatRegex = """脂肪[：:]*\s*(\d+(?:\.\d+)?)\s*g?""".toRegex(RegexOption.IGNORE_CASE)
+            val fatMatch = fatRegex.find(text)
+            val fat = fatMatch?.groupValues?.filterNot { it.isEmpty() }?.lastOrNull()?.toDoubleOrNull()
+            
+            // 判断食物分类
+            val category = inferFoodCategory(foodName)
+            
+            // 如果成功解析到热量，使用解析结果
+            if (calories != null && calories > 0) {
+                Log.d(TAG, "解析成功: calories=$calories, protein=$protein, carbs=$carbs, fat=$fat")
+                return NutritionQueryResult(
+                    calories = calories,
+                    protein = protein ?: (calories * 0.1 / 4),  // 估算: 10% 热量来自蛋白质
+                    carbs = carbs ?: (calories * 0.5 / 4),       // 估算: 50% 热量来自碳水
+                    fat = fat ?: (calories * 0.3 / 9),           // 估算: 30% 热量来自脂肪
+                    category = category
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "解析营养数据失败: ${e.message}")
+        }
+        
+        // 解析失败，使用估算值
+        return estimateNutrition(foodName, weightG)
+    }
+    
+    /**
+     * 估算营养数据（后备方案）
+     */
+    private fun estimateNutrition(foodName: String, weightG: Double): NutritionQueryResult {
+        // 根据食物名称推断类型并使用不同的估算值
+        val (caloriesPer100g, proteinPer100g, carbsPer100g, fatPer100g) = when {
+            foodName.contains("米饭") || foodName.contains("白饭") -> listOf(116.0, 2.6, 25.9, 0.3)
+            foodName.contains("面") || foodName.contains("面条") -> listOf(137.0, 4.5, 25.0, 0.8)
+            foodName.contains("肉") || foodName.contains("鸡") || foodName.contains("猪") || foodName.contains("牛") -> listOf(200.0, 20.0, 0.0, 12.0)
+            foodName.contains("鱼") || foodName.contains("虾") -> listOf(100.0, 18.0, 0.0, 2.0)
+            foodName.contains("蛋") -> listOf(144.0, 13.0, 1.0, 10.0)
+            foodName.contains("奶") || foodName.contains("牛奶") -> listOf(54.0, 3.0, 5.0, 3.0)
+            foodName.contains("水果") || foodName.contains("苹果") || foodName.contains("香蕉") || foodName.contains("橙") -> listOf(50.0, 0.5, 12.0, 0.2)
+            foodName.contains("蔬菜") || foodName.contains("菜") -> listOf(25.0, 1.5, 4.0, 0.2)
+            foodName.contains("饮料") || foodName.contains("可乐") || foodName.contains("果汁") -> listOf(40.0, 0.0, 10.0, 0.0)
+            foodName.contains("饼干") || foodName.contains("零食") || foodName.contains("薯片") -> listOf(480.0, 6.0, 65.0, 22.0)
+            foodName.contains("蛋糕") || foodName.contains("甜点") -> listOf(350.0, 5.0, 50.0, 15.0)
+            else -> listOf(150.0, 8.0, 15.0, 5.0)  // 通用估算
+        }
+        
+        val category = inferFoodCategory(foodName)
+        
+        return NutritionQueryResult(
+            calories = weightG * caloriesPer100g / 100,
+            protein = weightG * proteinPer100g / 100,
+            carbs = weightG * carbsPer100g / 100,
+            fat = weightG * fatPer100g / 100,
+            category = category
+        )
+    }
+    
+    /**
+     * 推断食物分类
+     */
+    private fun inferFoodCategory(foodName: String): String {
+        return when {
+            foodName.contains("饮料") || foodName.contains("可乐") || foodName.contains("果汁") || 
+            foodName.contains("茶") || foodName.contains("咖啡") || foodName.contains("奶茶") -> "beverage"
+            foodName.contains("水果") || foodName.contains("苹果") || foodName.contains("香蕉") || 
+            foodName.contains("橙") || foodName.contains("葡萄") || foodName.contains("西瓜") -> "fruit"
+            foodName.contains("饼干") || foodName.contains("零食") || foodName.contains("薯片") || 
+            foodName.contains("坚果") || foodName.contains("糖果") -> "snack"
+            foodName.contains("蛋糕") || foodName.contains("甜点") || foodName.contains("冰淇淋") || 
+            foodName.contains("巧克力") || foodName.contains("布丁") -> "dessert"
+            else -> "meal"
+        }
+    }
 }
+
+/**
+ * 营养查询结果
+ */
+private data class NutritionQueryResult(
+    val calories: Double,
+    val protein: Double,
+    val carbs: Double,
+    val fat: Double,
+    val category: String
+)

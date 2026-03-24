@@ -102,5 +102,40 @@
     - 确保数据持久化到 SharedPreferences
     - _Requirements: 6.1_
 
-- [x] 6. Checkpoint - 确保所有测试通过
+- [ ] 6. 实现手机端建议显示UI
+  - [ ] 6.1 在 HomeUiState 中添加建议相关状态
+    - 添加 `latestAdvice: MealAdviceResponse?` 字段（用餐结束后的详细建议）
+    - 添加 `nextMealSuggestion: NextMealSuggestion?` 字段（下一餐建议）
+    - 添加 `showMealEndDialog: Boolean` 字段（控制用餐结束弹窗显示）
+    - _Requirements: 3.1, 3.2_
+  - [ ] 6.2 更新 endMealSession 保存建议数据
+    - 在 endMealSession 成功回调中保存 `response.advice` 到 UI 状态
+    - 保存 `response.nextMealSuggestion` 到 UI 状态
+    - 设置 `showMealEndDialog = true` 触发弹窗显示
+    - _Requirements: 3.1, 3.2_
+  - [ ] 6.3 创建用餐结束建议弹窗组件
+    - 在 `ui/component/` 目录下创建 `MealEndAdviceDialog.kt`
+    - 显示用餐总结（热量、蛋白质、碳水、脂肪）
+    - 显示评级（good/fair/poor）和简短建议
+    - 显示详细建议列表（suggestions）
+    - 显示亮点（highlights）和警告（warnings）
+    - 显示下一餐建议（推荐时间、热量预算、重点营养素）
+    - _Requirements: 3.1, 3.2, 4.1_
+  - [ ] 6.4 在 HomeScreen 中集成建议弹窗
+    - 添加 MealEndAdviceDialog 组件
+    - 绑定 showMealEndDialog 状态
+    - 添加关闭弹窗的回调
+    - _Requirements: 3.1_
+
+- [ ] 7. 验证即时建议显示
+  - [ ] 7.1 确认后端返回 suggestion 字段
+    - 测试 `/api/v1/vision/analyze` 接口
+    - 确认 `raw_llm.suggestion` 字段有值
+    - _Requirements: 1.1_
+  - [ ] 7.2 确认前端正确显示即时建议
+    - 检查 `LatestResultCardWithPhoto` 中 suggestion 显示逻辑
+    - 确认 suggestion 不为空时显示绿色建议卡片
+    - _Requirements: 1.1, 1.2_
+
+- [ ] 8. Checkpoint - 确保所有测试通过
   - Ensure all tests pass, ask the user if questions arise.

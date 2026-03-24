@@ -23,40 +23,49 @@ import androidx.compose.ui.unit.sp
  * 基于官方设计规范:
  * - 显示区域: 480x640 可视安全, 480x400 建议显示
  * - 字体: HarmonyOS Sans SC
- * - 主色: 绿色 #00FF66
+ * - 主色: 绿色 #40FF5E（只能用这一种颜色，通过透明度区分）
  * - 圆角: 12px
- * - 描边: 1.5px
+ * - 描边: ≥1.5px
  */
 object RokidDesign {
     
     // ==================== 颜色系统 ====================
+    /**
+     * Rokid AR眼镜颜色规范
+     * 
+     * 核心规则：
+     * - 只能使用 #40FF5E 绿色
+     * - 通过透明度区分层次（40%、80%、100%）
+     * - 禁止使用渐变和大面积高亮
+     * - 禁止使用其他颜色
+     */
     object Colors {
-        // 主色调
-        val Primary = Color(0xFF00FF66)        // 主绿色
-        val PrimaryDark = Color(0xFF00CC52)    // 深绿色
-        val PrimaryLight = Color(0xFF66FF99)   // 浅绿色
+        // 主色 - Rokid官方绿 #40FF5E
+        val Primary = Color(0xFF40FF5E)         // 100% 主绿色
+        val PrimaryDark = Color(0xCC40FF5E)     // 80% 绿色（选中状态）
+        val PrimaryLight = Color(0x6640FF5E)    // 40% 绿色（常态）
         
         // 背景色
         val Background = Color(0xFF000000)      // 纯黑背景
-        val Surface = Color(0xFF0D0D0D)         // 微亮表面
-        val SurfaceVariant = Color(0xFF1A1A1A)  // 卡片背景
+        val Surface = Color(0x1A40FF5E)         // 10% 绿色表面
+        val SurfaceVariant = Color(0x3340FF5E)  // 20% 绿色卡片背景
         
-        // 文字色
-        val OnBackground = Color(0xFFFFFFFF)    // 主文字 100%
-        val OnBackgroundMedium = Color(0xCCFFFFFF)  // 次要文字 80%
-        val OnBackgroundLight = Color(0x80FFFFFF)   // 辅助文字 50%
-        val OnBackgroundHint = Color(0x4DFFFFFF)    // 提示文字 30%
+        // 文字色（全部使用绿色透明度）
+        val OnBackground = Color(0xFF40FF5E)        // 主文字 100%
+        val OnBackgroundMedium = Color(0xCC40FF5E)  // 次要文字 80%
+        val OnBackgroundLight = Color(0x6640FF5E)   // 辅助文字 40%
+        val OnBackgroundHint = Color(0x3340FF5E)    // 提示文字 20%
         
-        // 语义色
-        val Success = Color(0xFF00FF66)         // 成功/完成
-        val Warning = Color(0xFFFFCC00)         // 警告/进行中
-        val Error = Color(0xFFFF4444)           // 错误/断开
-        val Info = Color(0xFF00CCFF)            // 信息/处理中
+        // 语义色（全部使用绿色透明度区分）
+        val Success = Color(0xFF40FF5E)         // 成功/完成 - 100%
+        val Warning = Color(0xCC40FF5E)         // 警告/进行中 - 80%
+        val Error = Color(0x6640FF5E)           // 错误/断开 - 40%（不用红色）
+        val Info = Color(0xCC40FF5E)            // 信息/处理中 - 80%
         
-        // 营养色
-        val Protein = Color(0xFF00CCFF)         // 蛋白质 - 青色
-        val Carbs = Color(0xFFFFCC00)           // 碳水 - 黄色
-        val Fat = Color(0xFFFF8800)             // 脂肪 - 橙色
+        // 营养色（使用透明度区分，不使用彩色）
+        val Protein = Color(0xFF40FF5E)         // 蛋白质 - 100%
+        val Carbs = Color(0xCC40FF5E)           // 碳水 - 80%
+        val Fat = Color(0x6640FF5E)             // 脂肪 - 40%
         
         // 透明度变体
         fun primary(alpha: Float) = Primary.copy(alpha = alpha)

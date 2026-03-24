@@ -46,6 +46,7 @@ class BluetoothReceiver {
     private var sessionStatusListener: ((SessionStatus) -> Unit)? = null
     private var processingPhaseListener: ((Int, String) -> Unit)? = null
     private var takePhotoListener: (() -> Unit)? = null
+    private var personalizedTipListener: ((String, String) -> Unit)? = null  // (content, category)
     
     /**
      * 初始化消息订阅
@@ -61,15 +62,24 @@ class BluetoothReceiver {
             cxrBridge.subscribe(Config.MsgName.RESULT, object : CXRServiceBridge.MsgCallback {
                 override fun onReceive(name: String, args: Caps, data: ByteArray?) {
                     try {
+                        // 尝试读取 category，如果没有则默认为 "meal"
+                        val category = try {
+                            args.at(6).getString()
+                        } catch (e: Exception) {
+                            "meal"  // 兼容旧版本
+                        }
+                        
+                        val suggestionText = args.at(5).getString()
                         val result = NutritionResult(
                             foodName = args.at(0).getString(),
                             calories = args.at(1).getFloat().toDouble(),
                             protein = args.at(2).getFloat().toDouble(),
                             carbs = args.at(3).getFloat().toDouble(),
                             fat = args.at(4).getFloat().toDouble(),
-                            suggestion = args.at(5).getString()
+                            suggestion = suggestionText,
+                            category = category
                         )
-                        Log.d(TAG, "收到营养结果: ${result.foodName}, ${result.calories}kcal")
+                        Log.d(TAG, "收到营养结果: ${result.foodName}, ${result.calories}kcal, category=${result.category}, suggestion='$suggestionText'")
                         resultListener?.invoke(result)
                     } catch (e: Exception) {
                         Log.e(TAG, "解析营养结果失败", e)
@@ -105,6 +115,20 @@ class BluetoothReceiver {
                         processingPhaseListener?.invoke(phaseCode, phaseMessage)
                     } catch (e: Exception) {
                         Log.e(TAG, "解析处理阶段失败", e)
+                    }
+                }
+            })
+            
+            // 订阅个性化建议消息（手机端同步的健康建议）
+            cxrBridge.subscribe(Config.MsgName.PERSONALIZED_TIP, object : CXRServiceBridge.MsgCallback {
+                override fun onReceive(name: String, args: Caps, data: ByteArray?) {
+                    try {
+                        val tipContent = args.at(0).getString()
+                        val tipCategory = try { args.at(1).getString() } catch (e: Exception) { "nutrition" }
+                        Log.d(TAG, "收到个性化建议: [$tipCategory] $tipContent")
+                        personalizedTipListener?.invoke(tipContent, tipCategory)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "解析个性化建议失败", e)
                     }
                 }
             })
@@ -260,6 +284,18 @@ class BluetoothReceiver {
     }
     
     /**
+     * 设置个性化建议监听器
+     * 
+     * 当手机端同步个性化建议时触发
+     * @param listener 回调函数，参数为 (content, category)
+     *   content: 建议内容
+     *   category: 建议类型 (nutrition/timing/habit/warning/encouragement)
+     */
+    fun setPersonalizedTipListener(listener: (String, String) -> Unit) {
+        personalizedTipListener = listener
+    }
+    
+    /**
      * 释放资源
      */
     fun release() {
@@ -268,6 +304,7 @@ class BluetoothReceiver {
         sessionStatusListener = null
         processingPhaseListener = null
         takePhotoListener = null
+        personalizedTipListener = null
         Log.d(TAG, "CXR Receiver 已释放")
     }
 }
@@ -291,6 +328,13 @@ class BluetoothReceiver {
  * 而不是原始的食材列表。例如：
  * - 单道菜: "红烧肉"
  * - 多道菜: "红烧肉 · 米饭" 或 "红烧肉等3道菜"
+ * 
+ * category 字段用于判断是否进入用餐监测：
+ * - "meal": 正餐，进入用餐监测模式
+ * - "snack": 零食
+ * - "beverage": 饮料
+ * - "dessert": 甜点
+ * - "fruit": 水果
  */
 data class NutritionResult(
     val foodName: String,           // 菜品描述（手机端从 VLM 结果提取）
@@ -299,6 +343,7 @@ data class NutritionResult(
     val carbs: Double,              // 碳水化合物
     val fat: Double,                // 脂肪
     val suggestion: String,         // LLM 建议
+    val category: String = "meal",  // 食物类型（meal/snack/beverage/dessert/fruit）
     val timestamp: Long = System.currentTimeMillis()
 )
 

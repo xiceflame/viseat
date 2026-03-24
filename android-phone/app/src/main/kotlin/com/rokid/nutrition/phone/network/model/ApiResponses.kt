@@ -57,24 +57,46 @@ data class UserProfileData(
     @SerializedName("target_calories") val targetCalories: Float?,
     @SerializedName("health_conditions") val healthConditions: List<String>?,
     @SerializedName("dietary_preferences") val dietaryPreferences: List<String>?,
-    @SerializedName("updated_at") val updatedAt: String?
+    @SerializedName("updated_at") val updatedAt: String?,
+    // 新增字段 - 增强版个人信息
+    @SerializedName("birth_date") val birthDate: String? = null,  // ISO 8601 格式: "1990-01-15"
+    @SerializedName("target_date") val targetDate: String? = null,  // 目标达成日期
+    @SerializedName("diet_type") val dietType: String? = null,  // 饮食类型: balanced/low_carb/high_protein/vegetarian/vegan/keto
+    val allergens: List<String>? = null,  // 过敏原列表
+    @SerializedName("target_protein") val targetProtein: Float? = null,  // 蛋白质目标 (g)
+    @SerializedName("target_carbs") val targetCarbs: Float? = null,  // 碳水目标 (g)
+    @SerializedName("target_fat") val targetFat: Float? = null  // 脂肪目标 (g)
 )
 
 /**
  * 用户档案更新请求
  * 
  * 后端会自动计算 BMI 和 target_calories
+ * 
+ * 字段映射：
+ * - height -> height_cm (身高)
+ * - weight -> weight_kg (体重)
+ * - birthDate -> birth_year (出生年份，从 birthDate 提取)
+ * - allergens -> allergies (过敏原)
  */
 data class UserProfileUpdateRequest(
     val age: Int? = null,
     val gender: String? = null,
-    val height: Float? = null,
-    val weight: Float? = null,
+    @SerializedName("height_cm") val height: Float? = null,  // 身高 (cm)
+    @SerializedName("weight_kg") val weight: Float? = null,  // 体重 (kg)
     @SerializedName("activity_level") val activityLevel: String? = null,
     @SerializedName("health_goal") val healthGoal: String? = null,
     @SerializedName("target_weight") val targetWeight: Float? = null,
     @SerializedName("health_conditions") val healthConditions: List<String>? = null,
-    @SerializedName("dietary_preferences") val dietaryPreferences: List<String>? = null
+    @SerializedName("dietary_preferences") val dietaryPreferences: List<String>? = null,
+    // 新增字段 - 增强版个人信息
+    @SerializedName("birth_year") val birthYear: Int? = null,  // 出生年份
+    @SerializedName("target_date") val targetDate: String? = null,  // 目标达成日期
+    @SerializedName("diet_type") val dietType: String? = null,  // 饮食类型
+    val allergies: List<String>? = null,  // 过敏原列表
+    @SerializedName("target_protein") val targetProtein: Float? = null,  // 蛋白质目标 (g)
+    @SerializedName("target_carbs") val targetCarbs: Float? = null,  // 碳水目标 (g)
+    @SerializedName("target_fat") val targetFat: Float? = null  // 脂肪目标 (g)
 )
 
 /**
@@ -145,13 +167,23 @@ data class MealStartRequest(
 
 /**
  * 视觉分析响应
+ * 
+ * 后端返回的 suggestion 字段在两个位置：
+ * 1. 顶层 suggestion（推荐使用）
+ * 2. raw_llm.suggestion（LLM 原始输出）
  */
 data class VisionAnalyzeResponse(
     @SerializedName("snapshot_id") val snapshotId: String? = null,
     @SerializedName("session_id") val sessionId: String? = null,
     @SerializedName("raw_llm") val rawLlm: RawLlm,
-    val snapshot: SnapshotData
-)
+    val snapshot: SnapshotData,
+    @SerializedName("suggestion") val topLevelSuggestion: String? = null  // 顶层建议（后端提取）
+) {
+    /** 获取建议，优先使用顶层，其次使用 raw_llm 中的 */
+    fun getEffectiveSuggestion(): String = topLevelSuggestion?.takeIf { it.isNotBlank() } 
+        ?: rawLlm.suggestion?.takeIf { it.isNotBlank() } 
+        ?: ""
+}
 
 data class RawLlm(
     @SerializedName("is_food") val isFood: Boolean,
@@ -349,12 +381,83 @@ data class DeleteMealResponse(
     val message: String
 )
 
+// ==================== 个性化建议 API ====================
+
+/**
+ * 个性化建议响应
+ * GET /api/v1/users/{user_id}/personalized-tips
+ */
+data class PersonalizedTipsResponse(
+    val tips: List<PersonalizedTip>,
+    @SerializedName("generated_at") val generatedAt: String?,
+    @SerializedName("data_summary") val dataSummary: DataSummary?
+)
+
+/**
+ * 个性化建议项
+ */
+data class PersonalizedTip(
+    val id: String,
+    val content: String,
+    val category: String,  // nutrition/timing/habit/warning/encouragement
+    val priority: Int,     // 1-10，1最高
+    @SerializedName("valid_until") val validUntil: String?
+)
+
+/**
+ * 数据摘要
+ */
+data class DataSummary(
+    @SerializedName("avg_daily_calories") val avgDailyCalories: Double?,
+    @SerializedName("protein_ratio") val proteinRatio: Double?,
+    @SerializedName("carbs_ratio") val carbsRatio: Double?,
+    @SerializedName("fat_ratio") val fatRatio: Double?,
+    @SerializedName("meal_regularity_score") val mealRegularityScore: Double?
+)
+
+/**
+ * 刷新个性化建议请求
+ * POST /api/v1/users/{user_id}/personalized-tips/refresh
+ */
+data class RefreshTipsRequest(
+    val trigger: String,  // meal_ended/daily_refresh/manual
+    @SerializedName("meal_session_id") val mealSessionId: String? = null
+)
+
+/**
+ * 刷新个性化建议响应
+ */
+data class RefreshTipsResponse(
+    val status: String,  // queued/completed
+    @SerializedName("estimated_time") val estimatedTime: Int?,
+    val tips: List<PersonalizedTip>?  // 如果 status=completed，直接返回新建议
+)
+
+/**
+ * 建议反馈请求
+ * PUT /api/v1/users/{user_id}/personalized-tips/{tip_id}/feedback
+ */
+data class TipFeedbackRequest(
+    @SerializedName("is_helpful") val isHelpful: Boolean
+)
+
+/**
+ * 建议反馈响应
+ */
+data class TipFeedbackResponse(
+    val success: Boolean,
+    val message: String
+)
+
 /**
  * 判断食物类型的扩展函数
  * 
  * 直接使用后端返回的 category 字段判断：
  * - meal → 正餐（激活用餐监测）
  * - snack/beverage/dessert/fruit → 非正餐（不激活用餐监测）
+ * 
+ * 判断逻辑：只要有任何一个 meal 类型的食物，就激活用餐监测
+ * 例如：米饭(meal) + 可乐(beverage) → 激活用餐监测（以正餐为主）
  */
 fun VisionAnalyzeResponse.getFoodType(): FoodType {
     val TAG = "FoodTypeDetector"
@@ -386,18 +489,81 @@ fun VisionAnalyzeResponse.getFoodType(): FoodType {
     
     android.util.Log.d(TAG, "分类统计: meal=$mealCount, snack=$snackCount, other=$otherCount")
     
-    // 判断逻辑：只有全部是 meal 才激活用餐监测
+    // 判断逻辑：只要有任何一个 meal 类型的食物，就激活用餐监测（以正餐为主）
     val result = when {
-        // 有任何零食/饮料/甜点/水果，都不激活用餐监测
-        snackCount > 0 || otherCount > 0 -> FoodType.SNACK
-        // 全部是正餐
+        // 有任何正餐，就激活用餐监测（正餐优先）
         mealCount > 0 -> FoodType.MEAL
+        // 没有正餐，但有零食/饮料/甜点/水果
+        snackCount > 0 || otherCount > 0 -> FoodType.SNACK
         // 后端没返回 category，根据热量判断（阈值 400kcal）
         snapshot.nutrition.calories > 400 -> FoodType.MEAL
         else -> FoodType.SNACK
     }
     
-    android.util.Log.d(TAG, "最终判断: $result")
+    android.util.Log.d(TAG, "最终判断: $result (meal优先策略)")
     return result
 }
 
+
+
+// ==================== 体重追踪 API ====================
+
+/**
+ * 体重记录请求
+ * POST /api/v1/users/{user_id}/weight
+ */
+data class WeightEntryRequest(
+    val weight: Float,  // 体重 (kg)
+    @SerializedName("recorded_at") val recordedAt: String? = null,  // ISO 8601 格式，默认当前时间
+    val note: String? = null  // 可选备注
+)
+
+/**
+ * 体重记录响应
+ */
+data class WeightEntryResponse(
+    val id: String,
+    val weight: Float,
+    @SerializedName("recorded_at") val recordedAt: String,
+    val note: String?,
+    val message: String
+)
+
+/**
+ * 体重历史响应
+ * GET /api/v1/users/{user_id}/weight/history
+ */
+data class WeightHistoryResponse(
+    val entries: List<WeightEntryData>,
+    val summary: WeightSummary?
+)
+
+/**
+ * 体重记录数据
+ */
+data class WeightEntryData(
+    val id: String,
+    val weight: Float,
+    @SerializedName("recorded_at") val recordedAt: String,
+    val note: String?
+)
+
+/**
+ * 体重统计摘要
+ */
+data class WeightSummary(
+    @SerializedName("start_weight") val startWeight: Float?,  // 起始体重
+    @SerializedName("current_weight") val currentWeight: Float?,  // 当前体重
+    @SerializedName("target_weight") val targetWeight: Float?,  // 目标体重
+    @SerializedName("total_change") val totalChange: Float?,  // 总变化
+    @SerializedName("weekly_avg_change") val weeklyAvgChange: Float?,  // 每周平均变化
+    @SerializedName("progress_percent") val progressPercent: Float?  // 进度百分比
+)
+
+/**
+ * 删除体重记录响应
+ */
+data class DeleteWeightResponse(
+    val success: Boolean,
+    val message: String
+)

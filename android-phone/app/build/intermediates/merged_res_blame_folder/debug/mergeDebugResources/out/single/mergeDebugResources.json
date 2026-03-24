@@ -1,5 +1,9 @@
 [
     {
+        "merged": "com.rokid.nutrition.phone.app-debug-73:/drawable_ic_glasses.xml.flat",
+        "source": "com.rokid.nutrition.phone.app-main-75:/drawable/ic_glasses.xml"
+    },
+    {
         "merged": "com.rokid.nutrition.phone.app-debug-73:/raw_rokid_license.flat",
         "source": "com.rokid.nutrition.phone.app-main-75:/raw/rokid_license"
     },
@@ -10,6 +14,10 @@
     {
         "merged": "com.rokid.nutrition.phone.app-debug-73:/mipmap-hdpi_ic_launcher_round.xml.flat",
         "source": "com.rokid.nutrition.phone.app-main-75:/mipmap-hdpi/ic_launcher_round.xml"
+    },
+    {
+        "merged": "com.rokid.nutrition.phone.app-debug-73:/drawable_ic_glasses_rokid.png.flat",
+        "source": "com.rokid.nutrition.phone.app-main-75:/drawable/ic_glasses_rokid.png"
     },
     {
         "merged": "com.rokid.nutrition.phone.app-debug-73:/mipmap-hdpi_ic_launcher.xml.flat",

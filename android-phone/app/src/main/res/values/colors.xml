@@ -16,4 +16,12 @@
     <color name="connected">#4CAF50</color>
     <color name="disconnected">#9E9E9E</color>
     <color name="warning">#FFC107</color>
+    
+    <!-- 眼镜图标颜色 -->
+    <color name="glasses_frame">#2C2C2E</color>
+    <color name="glasses_camera">#5AC8FA</color>
+    <color name="glasses_accent">#34C759</color>
+    
+    <!-- 启动图标背景色 - 米白色 -->
+    <color name="launcher_background">#FAF8F5</color>
 </resources>

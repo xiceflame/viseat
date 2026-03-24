@@ -1,5 +1,7 @@
 package com.rokid.nutrition.phone.repository
 
+import android.util.Log
+import com.rokid.nutrition.phone.data.dao.MealSessionDao
 import com.rokid.nutrition.phone.data.dao.MealSnapshotDao
 import com.rokid.nutrition.phone.data.dao.SnapshotFoodDao
 import com.rokid.nutrition.phone.data.dao.SyncQueueDao
@@ -29,8 +31,13 @@ data class MealSnapshotWithFoods(
 class MealEditRepository(
     private val snapshotDao: MealSnapshotDao,
     private val foodDao: SnapshotFoodDao,
-    private val syncQueueDao: SyncQueueDao
+    private val syncQueueDao: SyncQueueDao,
+    private val sessionDao: MealSessionDao? = null  // 可选，用于更新会话热量
 ) {
+    companion object {
+        private const val TAG = "MealEditRepository"
+    }
+    
     private val gson = Gson()
     
     /**
@@ -85,13 +92,59 @@ class MealEditRepository(
         // 计算新值
         val newFood = calculateUpdatedFood(currentFood, updates)
         
+        // 计算热量差值
+        val caloriesDiff = newFood.caloriesKcal - currentFood.caloriesKcal
+        
         // 保存到数据库
         foodDao.saveFood(newFood)
+        
+        // 更新会话热量（如果有热量变化）
+        if (caloriesDiff != 0.0) {
+            updateSessionCaloriesFromSnapshot(currentFood.snapshotId, caloriesDiff)
+        }
         
         // 添加到同步队列
         enqueueSyncOperation(newFood)
         
         return Result.success(newFood)
+    }
+    
+    /**
+     * 根据快照ID更新对应会话的热量
+     */
+    private suspend fun updateSessionCaloriesFromSnapshot(snapshotId: String, caloriesDiff: Double) {
+        if (sessionDao == null) {
+            Log.w(TAG, "sessionDao 未初始化，跳过会话热量更新")
+            return
+        }
+        
+        try {
+            // 获取快照对应的会话ID
+            val snapshots = snapshotDao.getSnapshotsForSession(snapshotId)
+            val snapshot = snapshots.firstOrNull { it.id == snapshotId }
+            
+            if (snapshot != null) {
+                sessionDao.updateSessionCalories(
+                    sessionId = snapshot.sessionId,
+                    caloriesDiff = caloriesDiff,
+                    updatedAt = System.currentTimeMillis()
+                )
+                Log.d(TAG, "会话热量已更新: sessionId=${snapshot.sessionId}, diff=$caloriesDiff")
+            } else {
+                // 尝试直接使用 snapshotId 作为 sessionId（某些情况下它们可能相同）
+                val directSnapshot = snapshotDao.getLatestSnapshot(snapshotId)
+                if (directSnapshot != null) {
+                    sessionDao.updateSessionCalories(
+                        sessionId = directSnapshot.sessionId,
+                        caloriesDiff = caloriesDiff,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                    Log.d(TAG, "会话热量已更新（直接查询）: sessionId=${directSnapshot.sessionId}, diff=$caloriesDiff")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "更新会话热量失败", e)
+        }
     }
     
     /**
@@ -224,14 +277,17 @@ class MealEditRepository(
      */
     suspend fun deleteFoodItem(foodId: String): Result<Unit> {
         return try {
-            // 获取食物数据（用于同步队列）
+            // 获取食物数据（用于同步队列和更新会话热量）
             val food = foodDao.getFoodById(foodId)
             
             // 从数据库删除
             foodDao.deleteFood(foodId)
             
-            // 添加删除操作到同步队列
+            // 更新会话热量（减去被删除食物的热量）
             if (food != null) {
+                updateSessionCaloriesFromSnapshot(food.snapshotId, -food.caloriesKcal)
+                
+                // 添加删除操作到同步队列
                 enqueueDeleteOperation(food)
             }
             
@@ -239,6 +295,59 @@ class MealEditRepository(
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+    
+    /**
+     * 新增食物项
+     * 
+     * @param snapshotId 快照ID
+     * @param food 食物实体
+     * @return 保存后的食物实体
+     */
+    suspend fun addFoodItem(snapshotId: String, food: SnapshotFoodEntity): Result<SnapshotFoodEntity> {
+        return try {
+            // 保存到数据库
+            foodDao.saveFood(food)
+            
+            // 更新会话热量（加上新增食物的热量）
+            updateSessionCaloriesFromSnapshot(snapshotId, food.caloriesKcal)
+            
+            // 添加新增操作到同步队列
+            enqueueAddOperation(food)
+            
+            Result.success(food)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * 添加新增操作到同步队列
+     */
+    private suspend fun enqueueAddOperation(food: SnapshotFoodEntity) {
+        val payload = mapOf(
+            "food_id" to food.id,
+            "snapshot_id" to food.snapshotId,
+            "name" to food.name,
+            "chinese_name" to (food.chineseName ?: food.name),
+            "category" to (food.category ?: "meal"),
+            "weight_g" to food.weightG,
+            "calories_kcal" to food.caloriesKcal,
+            "protein_g" to (food.proteinG ?: 0.0),
+            "carbs_g" to (food.carbsG ?: 0.0),
+            "fat_g" to (food.fatG ?: 0.0),
+            "added_at" to System.currentTimeMillis()
+        )
+        
+        val operation = SyncQueueEntity(
+            id = UUID.randomUUID().toString(),
+            operationType = "add_food",
+            targetId = food.id,
+            payload = gson.toJson(payload),
+            createdAt = System.currentTimeMillis()
+        )
+        
+        syncQueueDao.insert(operation)
     }
     
     /**

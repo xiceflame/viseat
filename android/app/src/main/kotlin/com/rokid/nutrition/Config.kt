@@ -14,20 +14,37 @@ object Config {
 
     // ==================== 相机配置 ====================
 
-    /** 图片最大分辨率 */
-    const val MAX_IMAGE_SIZE = 1024
+    const val CAMERA_RESOLUTION = 1920
     
-    /** JPEG 图片质量（0-100） */
-    const val IMAGE_QUALITY = 85
+    const val IMAGE_OUTPUT_WIDTH = 1920
+    const val IMAGE_OUTPUT_HEIGHT = 1320
+
+    const val IMAGE_MAX_BYTES = 1_000_000
+
+    const val IMAGE_FALLBACK_WIDTH = 1600
+    const val IMAGE_FALLBACK_HEIGHT = 1100
+
+    const val PREVIEW_CROP_CX = 0.5f
+    const val PREVIEW_CROP_CY = 0.48f
+    const val PREVIEW_CROP_WIDTH_RATIO = 0.60f
+    
+    @Deprecated("使用 IMAGE_OUTPUT_WIDTH/HEIGHT 代替")
+    const val MAX_IMAGE_SIZE = 1280
+
+    const val IMAGE_QUALITY = 88
+
+    const val CENTER_CROP_RATIO = 0.85f
 
     // ==================== 用餐监测配置 ====================
 
-    /** 自动拍照间隔（毫秒）- 5分钟 */
     const val AUTO_CAPTURE_INTERVAL_MS = 5 * 60 * 1000L
+
+    const val RECOGNITION_TIMEOUT_MS = 20 * 1000L
+
+    const val MAX_RETRY_COUNT = 3
 
     // ==================== 蓝牙通信配置 ====================
 
-    /** 蓝牙服务 UUID（需与手机端一致） */
     const val BLUETOOTH_SERVICE_UUID = "00009100-0000-1000-8000-00805f9b34fb"
 
     /** 消息名称常量 */
@@ -37,6 +54,7 @@ object Config {
         const val RESULT = "nutrition_result"         // 手机→眼镜: 结果
         const val SESSION_STATUS = "session_status"   // 手机→眼镜: 会话状态
         const val PROCESSING_PHASE = "processing_phase"  // 手机→眼镜: 处理阶段
+        const val PERSONALIZED_TIP = "personalized_tip"  // 手机→眼镜: 个性化建议
     }
     
     /** 处理阶段代码 */

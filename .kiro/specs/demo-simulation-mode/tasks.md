@@ -1,0 +1,102 @@
+# Implementation Plan
+
+- [x] 1. 创建模拟数据资源文件
+  - [x] 1.1 创建单图识别模拟数据JSON文件
+    - 在 `assets/demo/` 目录创建 `coke_response.json` 和 `chips_response.json`
+    - 使用眼镜端保存的 rawResponse 格式
+    - 包含完整的 raw_llm、snapshot、suggestion 字段
+    - _Requirements: 3.1, 4.2, 4.3_
+  - [x] 1.2 创建用餐监测模拟数据JSON文件
+    - 创建 `meal_start_response.json`（基线数据）
+    - 创建 `meal_middle_response.json`（用餐中数据）
+    - 创建 `meal_end_response.json`（结束数据）
+    - _Requirements: 9.1, 9.2, 9.3_
+  - [x] 1.3 复制用餐监测图片到assets目录
+    - 将用餐开始.jpg、用餐中.jpg复制到 `assets/demo/`
+    - 重命名为 `meal_start.jpg`、`meal_middle.jpg`、`meal_end.jpg`
+    - _Requirements: 11.1, 11.2_
+
+- [x] 2. 实现DemoDataRepository
+  - [x] 2.1 创建DemoDataRepository类
+    - 实现 `loadSingleImageData(foodType: String)` 方法
+    - 实现 `loadMealPhaseData(phase: String)` 方法
+    - 实现 `loadDemoImage(imageName: String)` 方法
+    - 实现 `isDemoDataAvailable()` 检查方法
+    - _Requirements: 3.2, 4.1, 11.1_
+  - [ ]* 2.2 编写属性测试：JSON解析往返一致性
+    - **Property 1: JSON Parsing Round Trip**
+    - **Validates: Requirements 3.2**
+  - [ ]* 2.3 编写属性测试：营养数据提取正确性
+    - **Property 3: Nutrition Data Extraction**
+    - **Validates: Requirements 3.3, 3.4, 3.5**
+
+- [x] 3. 实现DemoViewModel
+  - [x] 3.1 创建DemoUiState数据类
+    - 定义 DemoMode 枚举（SELECTION, SINGLE_IMAGE, MEAL_MONITOR）
+    - 定义 MealPhase 枚举（NOT_STARTED, STARTING, IN_PROGRESS, ENDING, COMPLETED）
+    - 定义 MealProgress 数据类
+    - _Requirements: 5.2, 12.3_
+  - [x] 3.2 实现单图识别逻辑
+    - 实现 `selectFood(foodType: String)` 方法
+    - 实现 `startSingleImageRecognition()` 方法
+    - 添加1-2秒模拟延迟
+    - _Requirements: 2.4, 2.5_
+  - [x] 3.3 实现用餐监测逻辑
+    - 实现 `startMealMonitoring()` 方法
+    - 实现 `triggerMiddleCapture()` 方法
+    - 实现 `endMealMonitoring()` 方法
+    - 实现热量消耗计算逻辑
+    - _Requirements: 6.2, 6.3, 7.2, 7.3, 8.2_
+  - [x] 3.4 实现数据保存逻辑
+    - 调用 MealSessionRepository 保存识别结果
+    - 单图识别保存为非正餐会话
+    - 用餐监测保存为完整会话
+    - _Requirements: 2.6, 10.1, 10.2_
+  - [ ]* 3.5 编写属性测试：用餐进度计算正确性
+    - **Property 5: Meal Progress Calculation**
+    - **Validates: Requirements 7.3, 8.2, 9.4**
+  - [ ]* 3.6 编写属性测试：用餐阶段状态机正确性
+    - **Property 6: Meal Phase State Machine**
+    - **Validates: Requirements 6.4, 7.4, 8.5**
+
+- [x] 4. Checkpoint - 确保核心逻辑测试通过
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 5. 实现演示模式UI界面
+  - [x] 5.1 创建DemoScreen（模式选择界面）
+    - 显示两个模式选择卡片（单图识别、用餐监测）
+    - 添加返回按钮
+    - _Requirements: 1.2, 12.1_
+  - [x] 5.2 创建SingleImageModeScreen
+    - 显示食物选择列表（可乐、薯片卡片）
+    - 显示图片预览区域
+    - 显示开始识别按钮
+    - 显示识别结果卡片
+    - _Requirements: 2.1, 2.2, 2.3, 12.2_
+  - [x] 5.3 创建MealMonitorModeScreen
+    - 显示三阶段进度指示器
+    - 显示当前阶段状态和图片
+    - 显示热量消耗进度
+    - 显示操作按钮（开始用餐、结束用餐）
+    - _Requirements: 5.2, 12.3, 12.4_
+  - [x] 5.4 实现识别结果展示组件
+    - 显示食物名称、热量、营养成分
+    - 显示建议文字
+    - 提供查看详情按钮
+    - _Requirements: 12.5_
+
+- [x] 6. 集成到主导航
+  - [x] 6.1 在Navigation中添加演示模式路由
+    - 添加 Screen.Demo 路由定义
+    - 添加 composable 导航配置
+    - _Requirements: 1.3_
+  - [x] 6.2 在主页添加演示模式入口
+    - 在 HomeScreen 添加演示模式按钮
+    - 连接导航到 DemoScreen
+    - _Requirements: 1.1_
+  - [ ]* 6.3 编写属性测试：数据持久化往返一致性
+    - **Property 4: Data Persistence Round Trip**
+    - **Validates: Requirements 2.6, 10.1, 10.2**
+
+- [x] 7. Final Checkpoint - 确保所有测试通过
+  - Ensure all tests pass, ask the user if questions arise.

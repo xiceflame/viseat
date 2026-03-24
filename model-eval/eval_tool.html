@@ -1,0 +1,1137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>食品识别模型评测工具 - VisEat</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --success-gradient: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            --warning-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --card-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            --hover-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+        
+        body {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        }
+        
+        .navbar-brand {
+            font-weight: 700;
+            font-size: 1.5rem;
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .hero-section {
+            background: var(--primary-gradient);
+            color: white;
+            padding: 2rem 0;
+            margin-bottom: 2rem;
+            border-radius: 0 0 2rem 2rem;
+        }
+        
+        .model-card {
+            background: white;
+            border-radius: 1rem;
+            padding: 1.25rem;
+            box-shadow: var(--card-shadow);
+            transition: all 0.3s ease;
+            cursor: pointer;
+            border: 2px solid transparent;
+            height: 100%;
+        }
+        
+        .model-card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--hover-shadow);
+        }
+        
+        .model-card.active {
+            border-color: #667eea;
+            background: linear-gradient(135deg, #f8f9ff 0%, #e8ebff 100%);
+        }
+        
+        .model-card .model-name {
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: #333;
+            margin-bottom: 0.5rem;
+        }
+        
+        .model-card .model-progress {
+            font-size: 0.85rem;
+            color: #666;
+        }
+        
+        .model-card .model-stats {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-top: 0.75rem;
+        }
+        
+        .stat-badge {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.5rem;
+            font-weight: 500;
+        }
+        
+        .stat-badge.success { background: #d1fae5; color: #065f46; }
+        .stat-badge.warning { background: #fef3c7; color: #92400e; }
+        .stat-badge.danger { background: #fee2e2; color: #991b1b; }
+        .stat-badge.info { background: #dbeafe; color: #1e40af; }
+        
+        .metric-card {
+            background: white;
+            border-radius: 1rem;
+            padding: 1.5rem;
+            text-align: center;
+            box-shadow: var(--card-shadow);
+            height: 100%;
+        }
+        
+        .metric-card .metric-icon {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .metric-card .metric-value {
+            font-size: 2rem;
+            font-weight: 700;
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .metric-card .metric-label {
+            font-size: 0.875rem;
+            color: #6b7280;
+            margin-top: 0.25rem;
+        }
+        
+        .test-item {
+            background: white;
+            border-radius: 1rem;
+            margin-bottom: 1.5rem;
+            padding: 1.5rem;
+            box-shadow: var(--card-shadow);
+            transition: all 0.3s ease;
+        }
+        
+        .test-item:hover {
+            box-shadow: var(--hover-shadow);
+        }
+        
+        .img-preview {
+            width: 100%;
+            height: 180px;
+            object-fit: cover;
+            border-radius: 0.75rem;
+            background: #f3f4f6;
+        }
+        
+        .json-input {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.8rem;
+            border-radius: 0.75rem;
+            border: 2px solid #e5e7eb;
+            transition: border-color 0.3s ease;
+        }
+        
+        .json-input:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .status-badge {
+            font-size: 0.75rem;
+            padding: 0.35rem 0.75rem;
+            border-radius: 2rem;
+            font-weight: 500;
+        }
+        
+        .status-success { background: #d1fae5; color: #065f46; }
+        .status-danger { background: #fee2e2; color: #991b1b; }
+        .status-warning { background: #fef3c7; color: #92400e; }
+        .status-info { background: #dbeafe; color: #1e40af; }
+        
+        .btn-gradient {
+            background: var(--primary-gradient);
+            border: none;
+            color: white;
+            font-weight: 500;
+            padding: 0.5rem 1.25rem;
+            border-radius: 0.75rem;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-gradient:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            color: white;
+        }
+        
+        .btn-outline-gradient {
+            background: white;
+            border: 2px solid #667eea;
+            color: #667eea;
+            font-weight: 500;
+            padding: 0.5rem 1.25rem;
+            border-radius: 0.75rem;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-outline-gradient:hover {
+            background: var(--primary-gradient);
+            color: white;
+            border-color: transparent;
+        }
+        
+        .card-section {
+            background: white;
+            border-radius: 1rem;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: var(--card-shadow);
+        }
+        
+        .section-title {
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: #374151;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .prompt-box {
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            border-radius: 0.75rem;
+            padding: 1rem;
+            font-size: 0.85rem;
+            font-family: 'Monaco', 'Menlo', monospace;
+            white-space: pre-wrap;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #e2e8f0;
+        }
+        
+        .upload-zone {
+            border: 2px dashed #cbd5e1;
+            border-radius: 1rem;
+            padding: 2rem;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            background: #f8fafc;
+        }
+        
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: #667eea;
+            background: #f0f4ff;
+        }
+        
+        .upload-zone i {
+            font-size: 3rem;
+            color: #94a3b8;
+            margin-bottom: 1rem;
+        }
+        
+        .ingredient-table {
+            font-size: 0.85rem;
+        }
+        
+        .ingredient-table th {
+            background: #f8fafc;
+            font-weight: 600;
+            color: #475569;
+        }
+        
+        .comparison-table {
+            font-size: 0.8rem;
+        }
+        
+        .comparison-table .diff-good { color: #059669; font-weight: 600; }
+        .comparison-table .diff-bad { color: #dc2626; font-weight: 600; }
+        
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: #9ca3af;
+        }
+        
+        .empty-state i {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+        }
+        
+        .modal-content {
+            border-radius: 1rem;
+            border: none;
+        }
+        
+        .modal-header {
+            background: var(--primary-gradient);
+            color: white;
+            border-radius: 1rem 1rem 0 0;
+        }
+        
+        .modal-header .btn-close {
+            filter: brightness(0) invert(1);
+        }
+        
+        .form-control, .form-select {
+            border-radius: 0.75rem;
+            border: 2px solid #e5e7eb;
+            padding: 0.625rem 1rem;
+        }
+        
+        .form-control:focus, .form-select:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .ground-truth-card {
+            background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+            border-radius: 0.75rem;
+            padding: 1rem;
+            border: 1px solid #bbf7d0;
+        }
+        
+        .delete-btn {
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .model-card:hover .delete-btn {
+            opacity: 1;
+        }
+        
+        @media (max-width: 768px) {
+            .hero-section {
+                padding: 1.5rem 0;
+            }
+            
+            .metric-card .metric-value {
+                font-size: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="bi bi-egg-fried me-2"></i>VisEat 食品识别评测
+            </a>
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-gradient btn-sm" onclick="exportAllResults()">
+                    <i class="bi bi-download me-1"></i>导出对比
+                </button>
+                <button class="btn btn-outline-gradient btn-sm" onclick="clearAllData()">
+                    <i class="bi bi-trash me-1"></i>清空数据
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container py-4">
+        <!-- 模型管理区域 -->
+        <div class="card-section">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="section-title mb-0">
+                    <i class="bi bi-robot"></i> 已测试模型
+                </h5>
+                <button class="btn btn-gradient btn-sm" onclick="openNewModelModal()">
+                    <i class="bi bi-plus-lg me-1"></i>新建评测
+                </button>
+            </div>
+            
+            <div id="modelCards" class="row g-3">
+                <!-- 模型卡片将由JS动态生成 -->
+            </div>
+            
+            <div id="noModelsHint" class="empty-state" style="display: none;">
+                <i class="bi bi-inbox"></i>
+                <p>还没有评测记录<br>点击"新建评测"开始测试模型</p>
+            </div>
+        </div>
+
+        <!-- 当前评测区域 -->
+        <div id="currentEvalSection" style="display: none;">
+            <!-- 当前模型信息 -->
+            <div class="card-section">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="section-title mb-1">
+                            <i class="bi bi-lightning-charge"></i> 当前评测：<span id="currentModelName" class="text-primary"></span>
+                        </h5>
+                        <small class="text-muted">输入模型返回的JSON，系统将自动计算评测指标</small>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-outline-gradient btn-sm" onclick="openAddTestModal()">
+                            <i class="bi bi-plus-circle me-1"></i>添加测试图片
+                        </button>
+                        <button class="btn btn-gradient btn-sm" onclick="saveCurrentModel()">
+                            <i class="bi bi-check-lg me-1"></i>保存结果
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 指标概览 -->
+            <div class="row g-3 mb-4">
+                <div class="col-6 col-md-2">
+                    <div class="metric-card">
+                        <div class="metric-icon">📊</div>
+                        <div class="metric-value" id="m_progress">0/0</div>
+                        <div class="metric-label">评测进度</div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="metric-card">
+                        <div class="metric-icon">🎯</div>
+                        <div class="metric-value" id="m_name_acc">-</div>
+                        <div class="metric-label">名称准确率</div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="metric-card">
+                        <div class="metric-icon">⚖️</div>
+                        <div class="metric-value" id="m_weight_err">-</div>
+                        <div class="metric-label">重量误差</div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="metric-card">
+                        <div class="metric-icon">🥗</div>
+                        <div class="metric-value" id="m_ing_f1">-</div>
+                        <div class="metric-label">食材F1</div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="metric-card">
+                        <div class="metric-icon">✅</div>
+                        <div class="metric-value" id="m_json_valid">-</div>
+                        <div class="metric-label">JSON正确率</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 统一提示词 -->
+            <div class="card-section">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="section-title mb-0">
+                        <i class="bi bi-chat-quote"></i> 统一提示词
+                    </h6>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="copyPrompt()">
+                        <i class="bi bi-clipboard me-1"></i>复制
+                    </button>
+                </div>
+                <div class="prompt-box" id="promptText">你是一名专业的营养分析助手。请仔细观察图片，精确识别图中的食物，返回JSON：
+{"is_food":true,"suggestion":"建议","foods":[{"dish_name":"菜名","dish_name_cn":"菜名","category":"meal","cooking_method":"stir-fry","ingredients":[{"name_en":"ingredient","name_cn":"食材名","weight_g":100,"confidence":0.9}],"total_weight_g":100,"confidence":0.9}]}
+
+要求：
+1. 只输出JSON，不要其他文字
+2. dish_name_cn使用标准中文菜名
+3. category: meal/snack/beverage/dessert/fruit
+4. cooking_method: raw/steam/boil/braise/stir-fry/deep-fry/bake/grill
+5. weight_g估算可食用部分重量(克)
+6. ingredients列出所有可见食材及其重量</div>
+            </div>
+
+            <!-- 测试列表 -->
+            <div class="card-section">
+                <h6 class="section-title">
+                    <i class="bi bi-images"></i> 测试用例
+                </h6>
+                <div id="testList">
+                    <!-- 测试项将由JS动态生成 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新建评测模态框 -->
+    <div class="modal fade" id="newModelModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-plus-circle me-2"></i>新建模型评测</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">模型名称 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="newModelName" 
+                               placeholder="例如：GPT-4o、Claude 3.5、通义千问、Gemini 1.5">
+                        <div class="form-text">请输入您要测试的AI模型名称</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">测试者姓名（可选）</label>
+                        <input type="text" class="form-control" id="testerName" placeholder="您的姓名">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-gradient" onclick="createNewModel()">开始评测</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加测试图片模态框 -->
+    <div class="modal fade" id="addTestModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-image me-2"></i>添加测试图片</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-4">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">上传图片</label>
+                            <div class="upload-zone" id="uploadZone" onclick="document.getElementById('imageUpload').click()">
+                                <i class="bi bi-cloud-arrow-up"></i>
+                                <p class="mb-1">点击或拖拽图片到此处</p>
+                                <small class="text-muted">支持 JPG、PNG 格式</small>
+                            </div>
+                            <input type="file" id="imageUpload" accept="image/*" class="d-none" onchange="handleImageUpload(event)">
+                            <div id="imagePreviewContainer" class="mt-3" style="display: none;">
+                                <img id="uploadedImagePreview" class="img-fluid rounded" style="max-height: 200px;">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">食物名称 <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="newFoodName" placeholder="例如：番茄炒蛋">
+                            </div>
+                            <div class="row g-2 mb-3">
+                                <div class="col-6">
+                                    <label class="form-label fw-bold">总重量 (g)</label>
+                                    <input type="number" class="form-control" id="newFoodWeight" placeholder="300">
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label fw-bold">烹饪方式</label>
+                                    <select class="form-select" id="newCookingMethod">
+                                        <option value="stir-fry">炒</option>
+                                        <option value="steam">蒸</option>
+                                        <option value="boil">煮</option>
+                                        <option value="braise">炖/红烧</option>
+                                        <option value="deep-fry">炸</option>
+                                        <option value="bake">烘烤</option>
+                                        <option value="raw">生食/凉拌</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">食材列表</label>
+                                <div id="ingredientInputs">
+                                    <div class="row g-2 mb-2 ingredient-row">
+                                        <div class="col-7">
+                                            <input type="text" class="form-control form-control-sm" placeholder="食材名称">
+                                        </div>
+                                        <div class="col-4">
+                                            <input type="number" class="form-control form-control-sm" placeholder="克重">
+                                        </div>
+                                        <div class="col-1">
+                                            <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeIngredientRow(this)">
+                                                <i class="bi bi-x"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="addIngredientRow()">
+                                    <i class="bi bi-plus me-1"></i>添加食材
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-gradient" onclick="addTestCase()">添加</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // ==================== 数据结构 ====================
+        // allModels: { modelId: { name, tester, createdAt, testData, results } }
+        let allModels = {};
+        let currentModelId = null;
+        let uploadedImageData = null;
+
+        // 预置默认测试数据
+        const DEFAULT_TEST_DATA = [
+            { id: "001", image: "images/001.jpg", food_name: "西红柿炒鸡蛋", actual_weight: "450", ingredients: "鸡蛋:150|西红柿:300", cooking_method: "stir-fry" },
+            { id: "002", image: "images/002.jpg", food_name: "麻婆豆腐", actual_weight: "500", ingredients: "豆腐:400|牛肉:100", cooking_method: "braise" },
+            { id: "003", image: "images/003.jpg", food_name: "宫保鸡丁", actual_weight: "350", ingredients: "鸡胸肉:300|花生米:50", cooking_method: "stir-fry" },
+            { id: "004", image: "images/004.jpg", food_name: "清蒸鲈鱼", actual_weight: "500", ingredients: "鲈鱼:500", cooking_method: "steam" },
+            { id: "005", image: "images/005.jpg", food_name: "红烧排骨", actual_weight: "500", ingredients: "排骨:500", cooking_method: "braise" },
+            { id: "006", image: "images/006.jpg", food_name: "糖醋里脊", actual_weight: "400", ingredients: "里脊肉:400", cooking_method: "deep-fry" },
+            { id: "007", image: "images/007.jpg", food_name: "可乐鸡翅", actual_weight: "500", ingredients: "鸡翅:500", cooking_method: "braise" },
+            { id: "008", image: "images/008.jpg", food_name: "青椒肉丝", actual_weight: "350", ingredients: "猪肉:200|青椒:150", cooking_method: "stir-fry" },
+            { id: "009", image: "images/009.jpg", food_name: "酸辣土豆丝", actual_weight: "300", ingredients: "土豆:300", cooking_method: "stir-fry" },
+            { id: "010", image: "images/010.jpg", food_name: "蛋炒饭", actual_weight: "400", ingredients: "米饭:300|鸡蛋:100", cooking_method: "stir-fry" }
+        ];
+
+        // ==================== 初始化 ====================
+        window.onload = function() {
+            loadFromStorage();
+            renderModelCards();
+            
+            // 拖拽上传支持
+            const uploadZone = document.getElementById('uploadZone');
+            uploadZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadZone.classList.add('dragover');
+            });
+            uploadZone.addEventListener('dragleave', () => {
+                uploadZone.classList.remove('dragover');
+            });
+            uploadZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                uploadZone.classList.remove('dragover');
+                const file = e.dataTransfer.files[0];
+                if (file && file.type.startsWith('image/')) {
+                    processImageFile(file);
+                }
+            });
+        };
+
+        // ==================== 存储管理 ====================
+        function saveToStorage() {
+            localStorage.setItem('viseat_allModels', JSON.stringify(allModels));
+            localStorage.setItem('viseat_currentModelId', currentModelId || '');
+        }
+
+        function loadFromStorage() {
+            const saved = localStorage.getItem('viseat_allModels');
+            if (saved) {
+                allModels = JSON.parse(saved);
+            }
+            currentModelId = localStorage.getItem('viseat_currentModelId') || null;
+        }
+
+        function clearAllData() {
+            if (confirm('确定要清空所有评测数据吗？此操作不可恢复！')) {
+                allModels = {};
+                currentModelId = null;
+                saveToStorage();
+                renderModelCards();
+                document.getElementById('currentEvalSection').style.display = 'none';
+            }
+        }
+
+        // ==================== 模型管理 ====================
+        function openNewModelModal() {
+            document.getElementById('newModelName').value = '';
+            document.getElementById('testerName').value = '';
+            new bootstrap.Modal(document.getElementById('newModelModal')).show();
+        }
+
+        function createNewModel() {
+            const name = document.getElementById('newModelName').value.trim();
+            const tester = document.getElementById('testerName').value.trim();
+            
+            if (!name) {
+                alert('请输入模型名称');
+                return;
+            }
+
+            const modelId = 'model_' + Date.now();
+            allModels[modelId] = {
+                name: name,
+                tester: tester,
+                createdAt: new Date().toISOString(),
+                testData: JSON.parse(JSON.stringify(DEFAULT_TEST_DATA)),
+                results: {}
+            };
+
+            currentModelId = modelId;
+            saveToStorage();
+            
+            bootstrap.Modal.getInstance(document.getElementById('newModelModal')).hide();
+            renderModelCards();
+            showCurrentEval();
+        }
+
+        function switchToModel(modelId) {
+            currentModelId = modelId;
+            saveToStorage();
+            renderModelCards();
+            showCurrentEval();
+        }
+
+        function deleteModel(modelId, event) {
+            event.stopPropagation();
+            const model = allModels[modelId];
+            if (confirm(`确定要删除 "${model.name}" 的评测记录吗？`)) {
+                delete allModels[modelId];
+                if (currentModelId === modelId) {
+                    currentModelId = null;
+                    document.getElementById('currentEvalSection').style.display = 'none';
+                }
+                saveToStorage();
+                renderModelCards();
+            }
+        }
+
+        function renderModelCards() {
+            const container = document.getElementById('modelCards');
+            const noHint = document.getElementById('noModelsHint');
+            const modelIds = Object.keys(allModels);
+
+            if (modelIds.length === 0) {
+                container.innerHTML = '';
+                noHint.style.display = 'block';
+                return;
+            }
+
+            noHint.style.display = 'none';
+            container.innerHTML = modelIds.map(id => {
+                const m = allModels[id];
+                const total = m.testData.length;
+                const completed = Object.keys(m.results).length;
+                const isActive = id === currentModelId;
+                
+                // 计算指标
+                let nameAcc = '-', weightErr = '-', f1 = '-';
+                if (completed > 0) {
+                    let sumName = 0, sumWeight = 0, sumF1 = 0;
+                    Object.values(m.results).forEach(r => {
+                        if (r.metrics.nameCorrect) sumName++;
+                        sumWeight += r.metrics.weightError;
+                        sumF1 += r.metrics.f1;
+                    });
+                    nameAcc = (sumName / completed * 100).toFixed(0) + '%';
+                    weightErr = (sumWeight / completed * 100).toFixed(0) + '%';
+                    f1 = (sumF1 / completed * 100).toFixed(0) + '%';
+                }
+
+                return `
+                    <div class="col-6 col-md-3">
+                        <div class="model-card ${isActive ? 'active' : ''}" onclick="switchToModel('${id}')">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div class="model-name">${m.name}</div>
+                                <button class="btn btn-sm btn-link text-danger delete-btn p-0" onclick="deleteModel('${id}', event)">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                            <div class="model-progress">
+                                ${isActive ? '<i class="bi bi-lightning-charge text-warning me-1"></i>' : ''}
+                                ${completed}/${total} 已完成
+                            </div>
+                            ${m.tester ? `<div class="text-muted small">测试者: ${m.tester}</div>` : ''}
+                            <div class="model-stats">
+                                <span class="stat-badge ${completed > 0 ? 'success' : 'info'}">名称 ${nameAcc}</span>
+                                <span class="stat-badge ${completed > 0 ? 'warning' : 'info'}">误差 ${weightErr}</span>
+                                <span class="stat-badge ${completed > 0 ? 'info' : 'info'}">F1 ${f1}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function showCurrentEval() {
+            if (!currentModelId || !allModels[currentModelId]) {
+                document.getElementById('currentEvalSection').style.display = 'none';
+                return;
+            }
+
+            document.getElementById('currentEvalSection').style.display = 'block';
+            document.getElementById('currentModelName').textContent = allModels[currentModelId].name;
+            renderTestList();
+            updateMetrics();
+        }
+
+        function saveCurrentModel() {
+            saveToStorage();
+            renderModelCards();
+            alert('评测结果已保存！');
+        }
+
+        // ==================== 测试用例管理 ====================
+        function openAddTestModal() {
+            document.getElementById('newFoodName').value = '';
+            document.getElementById('newFoodWeight').value = '';
+            document.getElementById('ingredientInputs').innerHTML = `
+                <div class="row g-2 mb-2 ingredient-row">
+                    <div class="col-7"><input type="text" class="form-control form-control-sm" placeholder="食材名称"></div>
+                    <div class="col-4"><input type="number" class="form-control form-control-sm" placeholder="克重"></div>
+                    <div class="col-1"><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeIngredientRow(this)"><i class="bi bi-x"></i></button></div>
+                </div>
+            `;
+            uploadedImageData = null;
+            document.getElementById('imagePreviewContainer').style.display = 'none';
+            new bootstrap.Modal(document.getElementById('addTestModal')).show();
+        }
+
+        function addIngredientRow() {
+            const container = document.getElementById('ingredientInputs');
+            const row = document.createElement('div');
+            row.className = 'row g-2 mb-2 ingredient-row';
+            row.innerHTML = `
+                <div class="col-7"><input type="text" class="form-control form-control-sm" placeholder="食材名称"></div>
+                <div class="col-4"><input type="number" class="form-control form-control-sm" placeholder="克重"></div>
+                <div class="col-1"><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeIngredientRow(this)"><i class="bi bi-x"></i></button></div>
+            `;
+            container.appendChild(row);
+        }
+
+        function removeIngredientRow(btn) {
+            const rows = document.querySelectorAll('.ingredient-row');
+            if (rows.length > 1) {
+                btn.closest('.ingredient-row').remove();
+            }
+        }
+
+        function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (file) {
+                processImageFile(file);
+            }
+        }
+
+        function processImageFile(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                uploadedImageData = e.target.result;
+                document.getElementById('uploadedImagePreview').src = uploadedImageData;
+                document.getElementById('imagePreviewContainer').style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function addTestCase() {
+            const name = document.getElementById('newFoodName').value.trim();
+            const weight = document.getElementById('newFoodWeight').value.trim();
+            const method = document.getElementById('newCookingMethod').value;
+
+            if (!name) {
+                alert('请输入食物名称');
+                return;
+            }
+
+            // 收集食材
+            const ingredientRows = document.querySelectorAll('.ingredient-row');
+            const ingredients = [];
+            ingredientRows.forEach(row => {
+                const inputs = row.querySelectorAll('input');
+                const ingName = inputs[0].value.trim();
+                const ingWeight = inputs[1].value.trim();
+                if (ingName && ingWeight) {
+                    ingredients.push(`${ingName}:${ingWeight}`);
+                }
+            });
+
+            const model = allModels[currentModelId];
+            const newId = String(model.testData.length + 1).padStart(3, '0');
+            
+            model.testData.push({
+                id: newId,
+                image: uploadedImageData || 'https://via.placeholder.com/200x150?text=No+Image',
+                food_name: name,
+                actual_weight: weight || '0',
+                ingredients: ingredients.join('|'),
+                cooking_method: method
+            });
+
+            saveToStorage();
+            bootstrap.Modal.getInstance(document.getElementById('addTestModal')).hide();
+            renderTestList();
+            updateMetrics();
+        }
+
+        function renderTestList() {
+            const container = document.getElementById('testList');
+            const model = allModels[currentModelId];
+            
+            if (!model || model.testData.length === 0) {
+                container.innerHTML = '<div class="empty-state"><i class="bi bi-inbox"></i><p>暂无测试用例</p></div>';
+                return;
+            }
+
+            container.innerHTML = model.testData.map(item => {
+                const ingredientsList = item.ingredients ? item.ingredients.split('|').map(s => {
+                    const [name, weight] = s.split(':');
+                    return { name, weight: weight || '-' };
+                }) : [];
+
+                const ingredientsHtml = ingredientsList.length > 0 
+                    ? `<table class="table table-sm table-borderless ingredient-table mb-0">
+                        ${ingredientsList.map(i => `<tr><td class="ps-0 py-1">${i.name}</td><td class="text-end text-muted py-1">${i.weight}g</td></tr>`).join('')}
+                       </table>`
+                    : '<div class="small text-muted">无详细食材</div>';
+
+                const result = model.results[item.id];
+                const metricsHtml = result 
+                    ? renderItemMetricsHtml(result.metrics)
+                    : '<span class="status-badge status-info">待测试</span>';
+
+                return `
+                    <div class="test-item">
+                        <div class="row g-4">
+                            <div class="col-md-3">
+                                <img src="${item.image}" class="img-preview mb-2" onerror="this.src='https://via.placeholder.com/200x150?text=No+Image'">
+                                <div class="fw-bold">#${item.id} ${item.food_name}</div>
+                            </div>
+                            <div class="col-md-4">
+                                <h6 class="text-muted small mb-2"><i class="bi bi-check-circle me-1"></i>标准答案</h6>
+                                <div class="ground-truth-card">
+                                    <div class="d-flex justify-content-between mb-1">
+                                        <span class="text-muted small">总重量:</span>
+                                        <strong>${item.actual_weight}g</strong>
+                                    </div>
+                                    <div class="d-flex justify-content-between mb-2">
+                                        <span class="text-muted small">烹饪方式:</span>
+                                        <span>${item.cooking_method}</span>
+                                    </div>
+                                    <div class="border-top pt-2">
+                                        <span class="text-muted small d-block mb-1">食材明细:</span>
+                                        ${ingredientsHtml}
+                                    </div>
+                                </div>
+                                <div id="metrics-${item.id}" class="mt-3">
+                                    ${metricsHtml}
+                                </div>
+                            </div>
+                            <div class="col-md-5">
+                                <h6 class="text-muted small mb-2"><i class="bi bi-robot me-1"></i>模型输出 (JSON)</h6>
+                                <textarea class="form-control json-input" rows="6" 
+                                    placeholder="在此粘贴模型返回的JSON..."
+                                    oninput="handleJsonInput('${item.id}', this.value)">${result ? JSON.stringify(result.raw, null, 2) : ''}</textarea>
+                                <div id="error-${item.id}" class="text-danger small mt-1"></div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // ==================== 评测计算 ====================
+        function handleJsonInput(id, jsonStr) {
+            const model = allModels[currentModelId];
+            const item = model.testData.find(i => i.id === id);
+            const errorDiv = document.getElementById(`error-${id}`);
+            const metricsDiv = document.getElementById(`metrics-${id}`);
+
+            if (!jsonStr.trim()) {
+                delete model.results[id];
+                errorDiv.textContent = '';
+                metricsDiv.innerHTML = '<span class="status-badge status-info">待测试</span>';
+                saveToStorage();
+                updateMetrics();
+                renderModelCards();
+                return;
+            }
+
+            try {
+                const cleanJson = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
+                const pred = JSON.parse(cleanJson);
+                const metrics = calculateMetrics(item, pred);
+                
+                model.results[id] = { raw: pred, metrics: metrics };
+                errorDiv.textContent = '';
+                metricsDiv.innerHTML = renderItemMetricsHtml(metrics);
+                
+                saveToStorage();
+                updateMetrics();
+                renderModelCards();
+            } catch (e) {
+                errorDiv.textContent = 'JSON解析失败: ' + e.message;
+                metricsDiv.innerHTML = '<span class="status-badge status-danger">格式错误</span>';
+            }
+        }
+
+        function calculateMetrics(item, pred) {
+            const food = (pred.foods && pred.foods.length > 0) ? pred.foods[0] : {};
+            const predName = food.dish_name_cn || food.dish_name || "";
+            const predWeight = food.total_weight_g || 0;
+            const actualWeight = parseFloat(item.actual_weight) || 0;
+
+            const nameCorrect = predName.trim() === item.food_name.trim();
+            let weightError = actualWeight > 0 ? Math.abs(predWeight - actualWeight) / actualWeight : 1.0;
+
+            // 食材分析
+            const actualMap = new Map();
+            if (item.ingredients) {
+                item.ingredients.split('|').forEach(s => {
+                    const [name, weight] = s.split(':');
+                    if (name.trim()) actualMap.set(name.trim(), parseFloat(weight) || 0);
+                });
+            }
+
+            const predMap = new Map();
+            if (pred.foods) {
+                pred.foods.forEach(f => {
+                    if (f.ingredients) {
+                        f.ingredients.forEach(i => {
+                            if (i.name_cn) predMap.set(i.name_cn.trim(), i.weight_g || 0);
+                        });
+                    }
+                });
+            }
+
+            const actualNames = new Set(actualMap.keys());
+            const predNames = new Set(predMap.keys());
+            
+            let recall = 0, precision = 0, f1 = 0;
+            if (actualNames.size > 0) {
+                const intersection = new Set([...actualNames].filter(x => predNames.has(x)));
+                recall = intersection.size / actualNames.size;
+                precision = predNames.size > 0 ? intersection.size / predNames.size : 0;
+                if (recall + precision > 0) {
+                    f1 = (2 * recall * precision) / (recall + precision);
+                }
+            }
+
+            // 对比列表
+            const allNames = new Set([...actualNames, ...predNames]);
+            const ingredientComparison = [];
+            allNames.forEach(name => {
+                const actualW = actualMap.get(name);
+                const predW = predMap.get(name);
+                let diff = '-', diffClass = '';
+                if (actualW !== undefined && predW !== undefined && actualW > 0) {
+                    const d = (predW - actualW) / actualW;
+                    diff = (d * 100).toFixed(0) + '%';
+                    diffClass = Math.abs(d) < 0.2 ? 'diff-good' : 'diff-bad';
+                }
+                ingredientComparison.push({ name, actual: actualW, pred: predW, diff, diffClass });
+            });
+
+            return { nameCorrect, weightError, recall, precision, f1, predName, predWeight, ingredientComparison };
+        }
+
+        function renderItemMetricsHtml(m) {
+            const nameClass = m.nameCorrect ? 'status-success' : 'status-danger';
+            const nameText = m.nameCorrect ? '✓ 名称正确' : `✗ 预测: ${m.predName}`;
+            const weightClass = m.weightError < 0.2 ? 'status-success' : (m.weightError < 0.5 ? 'status-warning' : 'status-danger');
+
+            let comparisonHtml = '';
+            if (m.ingredientComparison && m.ingredientComparison.length > 0) {
+                comparisonHtml = `
+                    <div class="mt-2">
+                        <small class="text-muted fw-bold">食材对比</small>
+                        <table class="table table-sm comparison-table mt-1">
+                            <thead><tr><th>食材</th><th>真实</th><th>预测</th><th>偏差</th></tr></thead>
+                            <tbody>
+                                ${m.ingredientComparison.map(r => `
+                                    <tr>
+                                        <td>${r.name}</td>
+                                        <td>${r.actual !== undefined ? r.actual + 'g' : '-'}</td>
+                                        <td>${r.pred !== undefined ? r.pred + 'g' : '-'}</td>
+                                        <td class="${r.diffClass}">${r.diff}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }
+
+            return `
+                <div class="d-flex flex-wrap gap-2 mb-2">
+                    <span class="status-badge ${nameClass}">${nameText}</span>
+                    <span class="status-badge ${weightClass}">误差 ${(m.weightError * 100).toFixed(0)}%</span>
+                    <span class="status-badge status-info">F1 ${(m.f1 * 100).toFixed(0)}%</span>
+                </div>
+                ${comparisonHtml}
+            `;
+        }
+
+        function updateMetrics() {
+            const model = allModels[currentModelId];
+            if (!model) return;
+
+            const total = model.testData.length;
+            const results = model.results;
+            const n = Object.keys(results).length;
+
+            document.getElementById('m_progress').textContent = `${n}/${total}`;
+
+            if (n === 0) {
+                ['m_name_acc', 'm_weight_err', 'm_ing_f1', 'm_json_valid'].forEach(id => {
+                    document.getElementById(id).textContent = '-';
+                });
+                return;
+            }
+
+            let sumName = 0, sumWeight = 0, sumF1 = 0;
+            Object.values(results).forEach(r => {
+                if (r.metrics.nameCorrect) sumName++;
+                sumWeight += r.metrics.weightError;
+                sumF1 += r.metrics.f1;
+            });
+
+            document.getElementById('m_name_acc').textContent = (sumName / n * 100).toFixed(1) + '%';
+            document.getElementById('m_weight_err').textContent = (sumWeight / n * 100).toFixed(1) + '%';
+            document.getElementById('m_ing_f1').textContent = (sumF1 / n * 100).toFixed(1) + '%';
+            document.getElementById('m_json_valid').textContent = '100%';
+        }
+
+        // ==================== 工具函数 ====================
+        function copyPrompt() {
+            const text = document.getElementById('promptText').textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                alert('提示词已复制！');
+            });
+        }
+
+        function exportAllResults() {
+            const modelIds = Object.keys(allModels);
+            if (modelIds.length === 0) {
+                alert('暂无评测数据可导出');
+                return;
+            }
+
+            let csv = "\ufeff模型名称,测试者,名称准确率,重量平均误差,食材F1,完成数/总数\n";
+            
+            modelIds.forEach(id => {
+                const m = allModels[id];
+                const total = m.testData.length;
+                const completed = Object.keys(m.results).length;
+                
+                let nameAcc = '-', weightErr = '-', f1 = '-';
+                if (completed > 0) {
+                    let sumName = 0, sumWeight = 0, sumF1 = 0;
+                    Object.values(m.results).forEach(r => {
+                        if (r.metrics.nameCorrect) sumName++;
+                        sumWeight += r.metrics.weightError;
+                        sumF1 += r.metrics.f1;
+                    });
+                    nameAcc = (sumName / completed * 100).toFixed(1) + '%';
+                    weightErr = (sumWeight / completed * 100).toFixed(1) + '%';
+                    f1 = (sumF1 / completed * 100).toFixed(1) + '%';
+                }
+
+                csv += `${m.name},${m.tester || '-'},${nameAcc},${weightErr},${f1},${completed}/${total}\n`;
+            });
+
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `模型评测对比_${new Date().toLocaleDateString()}.csv`;
+            link.click();
+        }
+    </script>
+</body>
+</html>

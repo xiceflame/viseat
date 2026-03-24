@@ -163,8 +163,35 @@ class NetworkManager {
             // 通知上传完成，传递图片URL
             onUploadComplete(fullImageUrl)
             
-            // 手动构建 JSON 字符串，完全绕过 Gson 序列化
-            val jsonBody = """{"image_url": "$fullImageUrl"}"""
+            // 构建 JSON 请求体，包含用户档案用于个性化建议
+            val jsonBody = buildString {
+                append("""{"image_url": "$fullImageUrl"""")
+                
+                // 添加用户档案（如果有）
+                if (userProfile != null) {
+                    append(""", "user_profile": {""")
+                    val profileParts = mutableListOf<String>()
+                    
+                    userProfile.healthConditions?.takeIf { it.isNotEmpty() }?.let { conditions ->
+                        val conditionsJson = conditions.joinToString(",") { "\"$it\"" }
+                        profileParts.add(""""health_conditions": [$conditionsJson]""")
+                    }
+                    
+                    userProfile.dietaryPreferences?.takeIf { it.isNotEmpty() }?.let { prefs ->
+                        val prefsJson = prefs.joinToString(",") { "\"$it\"" }
+                        profileParts.add(""""dietary_preferences": [$prefsJson]""")
+                    }
+                    
+                    userProfile.healthGoal?.let { goal ->
+                        profileParts.add(""""health_goal": "$goal"""")
+                    }
+                    
+                    append(profileParts.joinToString(", "))
+                    append("}")
+                }
+                
+                append("}")
+            }
             DebugLogger.i(TAG, "发送分析请求 JSON: $jsonBody")
             
             val analyzeRequestBody = jsonBody.toRequestBody("application/json".toMediaTypeOrNull())
@@ -380,6 +407,13 @@ class NetworkManager {
     
     /**
      * 更新用户档案（通过 user_id）
+     * 
+     * 支持完整的用户档案字段，包括：
+     * - 基本信息：age, gender, height, weight
+     * - 目标设置：healthGoal, targetWeight, targetDate
+     * - 饮食偏好：dietType, allergens, dietaryPreferences
+     * - 健康状况：healthConditions, activityLevel
+     * - 出生日期：birthDate
      */
     suspend fun updateUserProfile(
         userId: String,
@@ -391,9 +425,17 @@ class NetworkManager {
         healthGoal: String? = null,
         targetWeight: Float? = null,
         healthConditions: List<String>? = null,
-        dietaryPreferences: List<String>? = null
+        dietaryPreferences: List<String>? = null,
+        // 新增字段
+        birthDate: String? = null,  // ISO 格式 "1990-01-15"，会提取年份
+        targetDate: String? = null,
+        dietType: String? = null,
+        allergens: List<String>? = null
     ): Result<UserProfileUpdateResponse> {
         return withRetry {
+            // 从 birthDate 提取出生年份
+            val birthYear = birthDate?.take(4)?.toIntOrNull()
+            
             val request = UserProfileUpdateRequest(
                 age = age,
                 gender = gender,
@@ -403,9 +445,13 @@ class NetworkManager {
                 healthGoal = healthGoal,
                 targetWeight = targetWeight,
                 healthConditions = healthConditions,
-                dietaryPreferences = dietaryPreferences
+                dietaryPreferences = dietaryPreferences,
+                birthYear = birthYear,
+                targetDate = targetDate,
+                dietType = dietType,
+                allergies = allergens  // 前端 allergens -> 后端 allergies
             )
-            DebugLogger.i(TAG, "更新用户档案: userId=$userId")
+            DebugLogger.i(TAG, "更新用户档案: userId=$userId, birthYear=$birthYear, dietType=$dietType, allergies=$allergens")
             api.updateUserProfile(userId, request)
         }
     }
@@ -443,6 +489,48 @@ class NetworkManager {
         return withRetry {
             DebugLogger.i(TAG, "删除用餐会话: sessionId=$sessionId")
             api.deleteMealSession(sessionId)
+        }
+    }
+    
+    // ==================== 个性化建议 API ====================
+    
+    /**
+     * 获取个性化健康提示
+     * 
+     * @param userId 用户ID
+     * @return 个性化提示列表
+     */
+    suspend fun getPersonalizedTips(userId: String): Result<PersonalizedTipsResponse> {
+        return withRetry {
+            DebugLogger.i(TAG, "获取个性化提示: userId=$userId")
+            val response = api.getPersonalizedTips(userId)
+            DebugLogger.i(TAG, "获取个性化提示成功: ${response.tips.size} 条")
+            response
+        }
+    }
+    
+    /**
+     * 刷新个性化健康提示
+     * 
+     * @param userId 用户ID
+     * @param trigger 触发类型: meal_ended/daily_refresh/manual
+     * @param mealSessionId 用餐会话ID（可选，当 trigger=meal_ended 时传入）
+     * @return 刷新后的提示列表
+     */
+    suspend fun refreshPersonalizedTips(
+        userId: String,
+        trigger: String = "manual",
+        mealSessionId: String? = null
+    ): Result<RefreshTipsResponse> {
+        return withRetry {
+            val request = RefreshTipsRequest(
+                trigger = trigger,
+                mealSessionId = mealSessionId
+            )
+            DebugLogger.i(TAG, "刷新个性化提示: userId=$userId, trigger=$trigger")
+            val response = api.refreshPersonalizedTips(userId, request)
+            DebugLogger.i(TAG, "刷新个性化提示成功: status=${response.status}")
+            response
         }
     }
     

@@ -1,0 +1,47 @@
+{
+  "raw_llm": {
+    "is_food": true,
+    "suggestion": "薯片热量较高，建议搭配水果或蔬菜食用以平衡营养。",
+    "foods": [
+      {
+        "dish_name": "薯片",
+        "dish_name_cn": "薯片",
+        "category": "snack",
+        "cooking_method": "deep_fry",
+        "ingredients": [
+          {
+            "name_en": "potato",
+            "name_cn": "土豆",
+            "weight_g": 100,
+            "confidence": 0.9
+          }
+        ],
+        "total_weight_g": 100,
+        "confidence": 0.9
+      }
+    ]
+  },
+  "mode": "start",
+  "suggestion": "薯片热量较高，建议搭配水果或蔬菜食用以平衡营养。",
+  "snapshot": {
+    "foods": [
+      {
+        "name": "薯片",
+        "name_cn": "薯片",
+        "weight_g": 100,
+        "category": "snack",
+        "calories_kcal": 536,
+        "protein_g": 6,
+        "carbs_g": 53,
+        "fat_g": 33,
+        "confidence": 0.9
+      }
+    ],
+    "nutrition": {
+      "calories": 536,
+      "protein": 6,
+      "carbs": 53,
+      "fat": 33
+    }
+  }
+}

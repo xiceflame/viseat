@@ -3,18 +3,21 @@ package com.rokid.nutrition
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
 import android.util.Log
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
+import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.LifecycleOwner
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+
 
 /**
  * 相机管理器（眼镜端）
@@ -54,10 +57,11 @@ class CameraManager(private val context: Context) {
                 cameraProvider = cameraProviderFuture.get()
                 
                 // 仅图像捕获，无预览
-                imageCapture = ImageCapture.Builder()
-                    .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                    .setTargetResolution(android.util.Size(Config.MAX_IMAGE_SIZE, Config.MAX_IMAGE_SIZE))
-                    .build()
+                // 使用更高的拍摄分辨率，后续会裁剪和压缩
+                 imageCapture = ImageCapture.Builder()
+                     .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                     .setTargetResolution(android.util.Size(Config.IMAGE_OUTPUT_WIDTH, Config.IMAGE_OUTPUT_HEIGHT))
+                     .build()
                 
                 // 选择后置摄像头（眼镜的主摄像头）
                 val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
@@ -127,45 +131,136 @@ class CameraManager(private val context: Context) {
     
     /**
      * 压缩图片到指定分辨率和质量
+     *
+     * 处理流程：
+     * 1. 读取 EXIF 旋转信息并校正方向
+     * 2. 中心裁剪（聚焦眼前食物，保留 85% 区域）
+     * 3. 缩放到目标分辨率（16:11 比例）
+     *
+     * 优化目标：
+     * - 输出分辨率: 16:11
+     * - 文件大小: 150-500KB
+     * - 食物占画面: 50%+
      */
     private fun compressImage(imageFile: File): Bitmap? {
         return try {
             // 读取原始图片
-            val originalBitmap = BitmapFactory.decodeFile(imageFile.absolutePath) ?: return null
-            
-            // 计算缩放比例
-            val maxSize = Config.MAX_IMAGE_SIZE.toFloat()
-            val scale = minOf(
-                maxSize / originalBitmap.width,
-                maxSize / originalBitmap.height,
-                1f  // 不放大
-            )
-            
-            if (scale >= 1f) {
-                // 不需要缩放
-                Log.d(TAG, "图片无需缩放: ${originalBitmap.width}x${originalBitmap.height}")
-                return originalBitmap
+            var originalBitmap = BitmapFactory.decodeFile(imageFile.absolutePath) ?: return null
+            Log.d(TAG, "原始图片: ${originalBitmap.width}x${originalBitmap.height}")
+
+            // 步骤0：读取 EXIF 旋转信息并校正方向
+            val rotatedBitmap = rotateImageIfRequired(originalBitmap, imageFile.absolutePath)
+            if (rotatedBitmap != originalBitmap) {
+                originalBitmap.recycle()
+                originalBitmap = rotatedBitmap
             }
-            
-            // 缩放图片
-            val scaledWidth = (originalBitmap.width * scale).toInt()
-            val scaledHeight = (originalBitmap.height * scale).toInt()
-            val scaledBitmap = Bitmap.createScaledBitmap(originalBitmap, scaledWidth, scaledHeight, true)
-            
-            Log.d(TAG, "图片压缩完成: ${scaledWidth}x${scaledHeight}")
+            Log.d(TAG, "旋转校正后: ${originalBitmap.width}x${originalBitmap.height}")
+
+             val croppedBitmap = cropPreviewWindow(originalBitmap)
+             Log.d(TAG, "裁切窗后: ${croppedBitmap.width}x${croppedBitmap.height}")
             
             // 回收原始 Bitmap
-            if (scaledBitmap != originalBitmap) {
+            if (croppedBitmap != originalBitmap) {
                 originalBitmap.recycle()
             }
             
-            scaledBitmap
+             val targetWidth = Config.IMAGE_OUTPUT_WIDTH
+             val targetHeight = Config.IMAGE_OUTPUT_HEIGHT
+
+             val scaleWidth = targetWidth.toFloat() / croppedBitmap.width
+             val scaleHeight = targetHeight.toFloat() / croppedBitmap.height
+             val scale = maxOf(scaleWidth, scaleHeight)
+
+             val scaledWidth = (croppedBitmap.width * scale).toInt()
+             val scaledHeight = (croppedBitmap.height * scale).toInt()
+
+             val scaledBitmap = if (scale != 1f) {
+                 Bitmap.createScaledBitmap(croppedBitmap, scaledWidth, scaledHeight, true)
+             } else {
+                 croppedBitmap
+             }
+
+             Log.d(TAG, "缩放后: ${scaledBitmap.width}x${scaledBitmap.height}")
+
+             if (scaledBitmap != croppedBitmap) {
+                 croppedBitmap.recycle()
+             }
+
+             val finalBitmap = if (scaledBitmap.width != targetWidth || scaledBitmap.height != targetHeight) {
+                 val x = maxOf(0, (scaledBitmap.width - targetWidth) / 2)
+                 val y = maxOf(0, (scaledBitmap.height - targetHeight) / 2)
+                 val cropWidth = minOf(targetWidth, scaledBitmap.width)
+                 val cropHeight = minOf(targetHeight, scaledBitmap.height)
+                 Bitmap.createBitmap(scaledBitmap, x, y, cropWidth, cropHeight)
+             } else {
+                 scaledBitmap
+             }
+
+             Log.d(TAG, "最终图片: ${finalBitmap.width}x${finalBitmap.height}")
+
+             if (finalBitmap != scaledBitmap) {
+                 scaledBitmap.recycle()
+             }
+
+             finalBitmap
         } catch (e: Exception) {
             Log.e(TAG, "图片压缩失败", e)
             null
         }
     }
     
+     private fun cropPreviewWindow(bitmap: Bitmap): Bitmap {
+         val width = bitmap.width
+         val height = bitmap.height
+
+         val cx = (Config.PREVIEW_CROP_CX * width).coerceIn(0f, width.toFloat())
+         val cy = (Config.PREVIEW_CROP_CY * height).coerceIn(0f, height.toFloat())
+
+         val initialW = Config.PREVIEW_CROP_WIDTH_RATIO * width
+         val initialH = initialW * (11f / 16f)
+
+         val maxHalfW = minOf(cx, width - cx)
+         val maxHalfH = minOf(cy, height - cy)
+
+         val scaleW = if (initialW <= 0f) 1f else (2f * maxHalfW / initialW).coerceAtMost(1f)
+         val scaleH = if (initialH <= 0f) 1f else (2f * maxHalfH / initialH).coerceAtMost(1f)
+         val scale = minOf(1f, scaleW, scaleH)
+
+         val cropW = (initialW * scale).toInt().coerceAtLeast(1)
+         val cropH = (initialH * scale).toInt().coerceAtLeast(1)
+
+         val left = (cx - cropW / 2f).toInt().coerceIn(0, width - cropW)
+         val top = (cy - cropH / 2f).toInt().coerceIn(0, height - cropH)
+
+         return Bitmap.createBitmap(bitmap, left, top, cropW, cropH)
+     }
+
+
+    /**
+     * 根据 EXIF 信息旋转图片
+     */
+    private fun rotateImageIfRequired(bitmap: Bitmap, imagePath: String): Bitmap {
+        val exif = ExifInterface(imagePath)
+        val orientation = exif.getAttributeInt(
+            ExifInterface.TAG_ORIENTATION,
+            ExifInterface.ORIENTATION_NORMAL
+        )
+
+        val rotationDegrees = when (orientation) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+            ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+            ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+            else -> 0f
+        }
+
+        return if (rotationDegrees != 0f) {
+            val matrix = Matrix().apply { postRotate(rotationDegrees) }
+            Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+        } else {
+            bitmap
+        }
+    }
+
     /**
      * 创建临时图片文件
      */

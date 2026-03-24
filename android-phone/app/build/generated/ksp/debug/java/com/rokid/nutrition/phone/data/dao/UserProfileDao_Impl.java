@@ -41,7 +41,7 @@ public final class UserProfileDao_Impl implements UserProfileDao {
       @Override
       @NonNull
       protected String createQuery() {
-        return "INSERT OR REPLACE INTO `user_profiles` (`id`,`nickname`,`age`,`gender`,`height`,`weight`,`bmi`,`activityLevel`,`healthGoal`,`targetWeight`,`healthConditions`,`dietaryPreferences`,`createdAt`,`updatedAt`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+        return "INSERT OR REPLACE INTO `user_profiles` (`id`,`nickname`,`age`,`gender`,`birthDate`,`height`,`weight`,`bmi`,`activityLevel`,`healthGoal`,`targetWeight`,`targetDate`,`dietType`,`allergens`,`healthConditions`,`dietaryPreferences`,`isOnboardingCompleted`,`createdAt`,`updatedAt`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
       }
 
       @Override
@@ -55,20 +55,34 @@ public final class UserProfileDao_Impl implements UserProfileDao {
         }
         statement.bindLong(3, entity.getAge());
         statement.bindString(4, entity.getGender());
-        statement.bindDouble(5, entity.getHeight());
-        statement.bindDouble(6, entity.getWeight());
-        statement.bindDouble(7, entity.getBmi());
-        statement.bindString(8, entity.getActivityLevel());
-        statement.bindString(9, entity.getHealthGoal());
-        if (entity.getTargetWeight() == null) {
-          statement.bindNull(10);
+        if (entity.getBirthDate() == null) {
+          statement.bindNull(5);
         } else {
-          statement.bindDouble(10, entity.getTargetWeight());
+          statement.bindString(5, entity.getBirthDate());
         }
-        statement.bindString(11, entity.getHealthConditions());
-        statement.bindString(12, entity.getDietaryPreferences());
-        statement.bindLong(13, entity.getCreatedAt());
-        statement.bindLong(14, entity.getUpdatedAt());
+        statement.bindDouble(6, entity.getHeight());
+        statement.bindDouble(7, entity.getWeight());
+        statement.bindDouble(8, entity.getBmi());
+        statement.bindString(9, entity.getActivityLevel());
+        statement.bindString(10, entity.getHealthGoal());
+        if (entity.getTargetWeight() == null) {
+          statement.bindNull(11);
+        } else {
+          statement.bindDouble(11, entity.getTargetWeight());
+        }
+        if (entity.getTargetDate() == null) {
+          statement.bindNull(12);
+        } else {
+          statement.bindString(12, entity.getTargetDate());
+        }
+        statement.bindString(13, entity.getDietType());
+        statement.bindString(14, entity.getAllergens());
+        statement.bindString(15, entity.getHealthConditions());
+        statement.bindString(16, entity.getDietaryPreferences());
+        final int _tmp = entity.isOnboardingCompleted() ? 1 : 0;
+        statement.bindLong(17, _tmp);
+        statement.bindLong(18, entity.getCreatedAt());
+        statement.bindLong(19, entity.getUpdatedAt());
       }
     };
   }
@@ -110,14 +124,19 @@ public final class UserProfileDao_Impl implements UserProfileDao {
           final int _cursorIndexOfNickname = CursorUtil.getColumnIndexOrThrow(_cursor, "nickname");
           final int _cursorIndexOfAge = CursorUtil.getColumnIndexOrThrow(_cursor, "age");
           final int _cursorIndexOfGender = CursorUtil.getColumnIndexOrThrow(_cursor, "gender");
+          final int _cursorIndexOfBirthDate = CursorUtil.getColumnIndexOrThrow(_cursor, "birthDate");
           final int _cursorIndexOfHeight = CursorUtil.getColumnIndexOrThrow(_cursor, "height");
           final int _cursorIndexOfWeight = CursorUtil.getColumnIndexOrThrow(_cursor, "weight");
           final int _cursorIndexOfBmi = CursorUtil.getColumnIndexOrThrow(_cursor, "bmi");
           final int _cursorIndexOfActivityLevel = CursorUtil.getColumnIndexOrThrow(_cursor, "activityLevel");
           final int _cursorIndexOfHealthGoal = CursorUtil.getColumnIndexOrThrow(_cursor, "healthGoal");
           final int _cursorIndexOfTargetWeight = CursorUtil.getColumnIndexOrThrow(_cursor, "targetWeight");
+          final int _cursorIndexOfTargetDate = CursorUtil.getColumnIndexOrThrow(_cursor, "targetDate");
+          final int _cursorIndexOfDietType = CursorUtil.getColumnIndexOrThrow(_cursor, "dietType");
+          final int _cursorIndexOfAllergens = CursorUtil.getColumnIndexOrThrow(_cursor, "allergens");
           final int _cursorIndexOfHealthConditions = CursorUtil.getColumnIndexOrThrow(_cursor, "healthConditions");
           final int _cursorIndexOfDietaryPreferences = CursorUtil.getColumnIndexOrThrow(_cursor, "dietaryPreferences");
+          final int _cursorIndexOfIsOnboardingCompleted = CursorUtil.getColumnIndexOrThrow(_cursor, "isOnboardingCompleted");
           final int _cursorIndexOfCreatedAt = CursorUtil.getColumnIndexOrThrow(_cursor, "createdAt");
           final int _cursorIndexOfUpdatedAt = CursorUtil.getColumnIndexOrThrow(_cursor, "updatedAt");
           final UserProfileEntity _result;
@@ -134,6 +153,12 @@ public final class UserProfileDao_Impl implements UserProfileDao {
             _tmpAge = _cursor.getInt(_cursorIndexOfAge);
             final String _tmpGender;
             _tmpGender = _cursor.getString(_cursorIndexOfGender);
+            final String _tmpBirthDate;
+            if (_cursor.isNull(_cursorIndexOfBirthDate)) {
+              _tmpBirthDate = null;
+            } else {
+              _tmpBirthDate = _cursor.getString(_cursorIndexOfBirthDate);
+            }
             final float _tmpHeight;
             _tmpHeight = _cursor.getFloat(_cursorIndexOfHeight);
             final float _tmpWeight;
@@ -150,15 +175,29 @@ public final class UserProfileDao_Impl implements UserProfileDao {
             } else {
               _tmpTargetWeight = _cursor.getFloat(_cursorIndexOfTargetWeight);
             }
+            final String _tmpTargetDate;
+            if (_cursor.isNull(_cursorIndexOfTargetDate)) {
+              _tmpTargetDate = null;
+            } else {
+              _tmpTargetDate = _cursor.getString(_cursorIndexOfTargetDate);
+            }
+            final String _tmpDietType;
+            _tmpDietType = _cursor.getString(_cursorIndexOfDietType);
+            final String _tmpAllergens;
+            _tmpAllergens = _cursor.getString(_cursorIndexOfAllergens);
             final String _tmpHealthConditions;
             _tmpHealthConditions = _cursor.getString(_cursorIndexOfHealthConditions);
             final String _tmpDietaryPreferences;
             _tmpDietaryPreferences = _cursor.getString(_cursorIndexOfDietaryPreferences);
+            final boolean _tmpIsOnboardingCompleted;
+            final int _tmp;
+            _tmp = _cursor.getInt(_cursorIndexOfIsOnboardingCompleted);
+            _tmpIsOnboardingCompleted = _tmp != 0;
             final long _tmpCreatedAt;
             _tmpCreatedAt = _cursor.getLong(_cursorIndexOfCreatedAt);
             final long _tmpUpdatedAt;
             _tmpUpdatedAt = _cursor.getLong(_cursorIndexOfUpdatedAt);
-            _result = new UserProfileEntity(_tmpId,_tmpNickname,_tmpAge,_tmpGender,_tmpHeight,_tmpWeight,_tmpBmi,_tmpActivityLevel,_tmpHealthGoal,_tmpTargetWeight,_tmpHealthConditions,_tmpDietaryPreferences,_tmpCreatedAt,_tmpUpdatedAt);
+            _result = new UserProfileEntity(_tmpId,_tmpNickname,_tmpAge,_tmpGender,_tmpBirthDate,_tmpHeight,_tmpWeight,_tmpBmi,_tmpActivityLevel,_tmpHealthGoal,_tmpTargetWeight,_tmpTargetDate,_tmpDietType,_tmpAllergens,_tmpHealthConditions,_tmpDietaryPreferences,_tmpIsOnboardingCompleted,_tmpCreatedAt,_tmpUpdatedAt);
           } else {
             _result = null;
           }
@@ -187,14 +226,19 @@ public final class UserProfileDao_Impl implements UserProfileDao {
           final int _cursorIndexOfNickname = CursorUtil.getColumnIndexOrThrow(_cursor, "nickname");
           final int _cursorIndexOfAge = CursorUtil.getColumnIndexOrThrow(_cursor, "age");
           final int _cursorIndexOfGender = CursorUtil.getColumnIndexOrThrow(_cursor, "gender");
+          final int _cursorIndexOfBirthDate = CursorUtil.getColumnIndexOrThrow(_cursor, "birthDate");
           final int _cursorIndexOfHeight = CursorUtil.getColumnIndexOrThrow(_cursor, "height");
           final int _cursorIndexOfWeight = CursorUtil.getColumnIndexOrThrow(_cursor, "weight");
           final int _cursorIndexOfBmi = CursorUtil.getColumnIndexOrThrow(_cursor, "bmi");
           final int _cursorIndexOfActivityLevel = CursorUtil.getColumnIndexOrThrow(_cursor, "activityLevel");
           final int _cursorIndexOfHealthGoal = CursorUtil.getColumnIndexOrThrow(_cursor, "healthGoal");
           final int _cursorIndexOfTargetWeight = CursorUtil.getColumnIndexOrThrow(_cursor, "targetWeight");
+          final int _cursorIndexOfTargetDate = CursorUtil.getColumnIndexOrThrow(_cursor, "targetDate");
+          final int _cursorIndexOfDietType = CursorUtil.getColumnIndexOrThrow(_cursor, "dietType");
+          final int _cursorIndexOfAllergens = CursorUtil.getColumnIndexOrThrow(_cursor, "allergens");
           final int _cursorIndexOfHealthConditions = CursorUtil.getColumnIndexOrThrow(_cursor, "healthConditions");
           final int _cursorIndexOfDietaryPreferences = CursorUtil.getColumnIndexOrThrow(_cursor, "dietaryPreferences");
+          final int _cursorIndexOfIsOnboardingCompleted = CursorUtil.getColumnIndexOrThrow(_cursor, "isOnboardingCompleted");
           final int _cursorIndexOfCreatedAt = CursorUtil.getColumnIndexOrThrow(_cursor, "createdAt");
           final int _cursorIndexOfUpdatedAt = CursorUtil.getColumnIndexOrThrow(_cursor, "updatedAt");
           final UserProfileEntity _result;
@@ -211,6 +255,12 @@ public final class UserProfileDao_Impl implements UserProfileDao {
             _tmpAge = _cursor.getInt(_cursorIndexOfAge);
             final String _tmpGender;
             _tmpGender = _cursor.getString(_cursorIndexOfGender);
+            final String _tmpBirthDate;
+            if (_cursor.isNull(_cursorIndexOfBirthDate)) {
+              _tmpBirthDate = null;
+            } else {
+              _tmpBirthDate = _cursor.getString(_cursorIndexOfBirthDate);
+            }
             final float _tmpHeight;
             _tmpHeight = _cursor.getFloat(_cursorIndexOfHeight);
             final float _tmpWeight;
@@ -227,15 +277,29 @@ public final class UserProfileDao_Impl implements UserProfileDao {
             } else {
               _tmpTargetWeight = _cursor.getFloat(_cursorIndexOfTargetWeight);
             }
+            final String _tmpTargetDate;
+            if (_cursor.isNull(_cursorIndexOfTargetDate)) {
+              _tmpTargetDate = null;
+            } else {
+              _tmpTargetDate = _cursor.getString(_cursorIndexOfTargetDate);
+            }
+            final String _tmpDietType;
+            _tmpDietType = _cursor.getString(_cursorIndexOfDietType);
+            final String _tmpAllergens;
+            _tmpAllergens = _cursor.getString(_cursorIndexOfAllergens);
             final String _tmpHealthConditions;
             _tmpHealthConditions = _cursor.getString(_cursorIndexOfHealthConditions);
             final String _tmpDietaryPreferences;
             _tmpDietaryPreferences = _cursor.getString(_cursorIndexOfDietaryPreferences);
+            final boolean _tmpIsOnboardingCompleted;
+            final int _tmp;
+            _tmp = _cursor.getInt(_cursorIndexOfIsOnboardingCompleted);
+            _tmpIsOnboardingCompleted = _tmp != 0;
             final long _tmpCreatedAt;
             _tmpCreatedAt = _cursor.getLong(_cursorIndexOfCreatedAt);
             final long _tmpUpdatedAt;
             _tmpUpdatedAt = _cursor.getLong(_cursorIndexOfUpdatedAt);
-            _result = new UserProfileEntity(_tmpId,_tmpNickname,_tmpAge,_tmpGender,_tmpHeight,_tmpWeight,_tmpBmi,_tmpActivityLevel,_tmpHealthGoal,_tmpTargetWeight,_tmpHealthConditions,_tmpDietaryPreferences,_tmpCreatedAt,_tmpUpdatedAt);
+            _result = new UserProfileEntity(_tmpId,_tmpNickname,_tmpAge,_tmpGender,_tmpBirthDate,_tmpHeight,_tmpWeight,_tmpBmi,_tmpActivityLevel,_tmpHealthGoal,_tmpTargetWeight,_tmpTargetDate,_tmpDietType,_tmpAllergens,_tmpHealthConditions,_tmpDietaryPreferences,_tmpIsOnboardingCompleted,_tmpCreatedAt,_tmpUpdatedAt);
           } else {
             _result = null;
           }
