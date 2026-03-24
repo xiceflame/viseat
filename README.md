@@ -950,9 +950,10 @@ response = MultiModalConversation.call(
 
 ## 联系方式
 
-- 项目主页: https://github.com/yourusername/rokid-nutrition-assistant
-- 问题反馈: https://github.com/yourusername/rokid-nutrition-assistant/issues
-- 邮箱: your.email@example.com
+- **项目网址**: https://viseat.cn
+- **开发团队**: 清觉（北京）科技有限公司
+- **GitHub 仓库**: https://github.com/xiceflame/viseat
+- **商务邮箱**: business@qingjue.com.cn
 
 ## 致谢
 
